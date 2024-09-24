@@ -3,16 +3,43 @@ from argparse import ArgumentParser
 from bs4 import BeautifulSoup
 from datetime import datetime
 from re import search
+from os import path
+from configparser import ConfigParser
 
 
-GMP_BASE_URL = "https://www.investorgain.com/report/live-ipo-gmp/331/"
+def __bootstrap() -> tuple[ArgumentParser, ConfigParser]:
+    args = cli()
+    config = ConfigParser()
+
+    try:
+        if not path.exists(args.config_path):
+            raise FileNotFoundError
+        config.read(args.config_path)
+
+        config_keys_to_check = ["WHAPI_API_URL", "WHAPI_TOKEN", "GMP_BASE_URL"]
+
+        for key in config_keys_to_check:
+            assert key in config["MAIN"], f"{key} not found in config!"
+
+        return (args, config["MAIN"])
+
+    except AssertionError as e:
+        print(f"Configuration Error: {e}")
+        exit(-1)
+    except FileNotFoundError:
+        print(f"Configuration file {args.config_path} does not exist.")
+        exit(-1)
+    except Exception as e:
+        print(f"An exception occured in ConfigParser! : {e}")
+        exit(-1)
+
 
 def cli() -> ArgumentParser:
     """Bootstrap CLI for the script
 
     Returns:
         ArgumentParser: CLI arguments
-    """ 
+    """
     parser = ArgumentParser(
         description="Send IPO application alerts to configured endpoints."
     )
@@ -30,30 +57,38 @@ def cli() -> ArgumentParser:
         default=20.0,
         help="GMP threshold value; percentage above which to return IPOs.",
     )
+    parser.add_argument(
+        "-f",
+        "--config-path",
+        type=str,
+        default=".config",
+        help="Path to the config file (Default: ./.config).",
+    )
 
     return parser.parse_args()
 
+
 def get_date_delta(date_str: str) -> int:
-    """returns the difference between the ipo deadline date and the current date. 
+    """returns the difference between the ipo deadline date and the current date.
 
     Args:
         date_str (str): close date on the ipo
 
     Returns:
         int: difference b/w current and close date
-    """    
+    """
     date_format = "%d-%b-%Y"
-    
+
     try:
         current_date = datetime.now()
         close_date = datetime.strptime(f"{date_str}-{current_date.year}", date_format)
-        
+
         diff = close_date - current_date
         return diff.days
 
     except ValueError as e:
-        print(f"Error parsing date: {e}")
         return None
+
 
 def parse_gmp(gmp_str: str) -> float:
     """returns percentage value for ipo gmp from the raw string
@@ -66,7 +101,7 @@ def parse_gmp(gmp_str: str) -> float:
     """
 
     # percentage value always in paranthesis
-    match = search(r'\((\d+\.\d+)%\)', gmp_str)
+    match = search(r"\((\d+\.\d+)%\)", gmp_str)
     if match:
         percentage_str = match.group(1)
         return float(percentage_str)
@@ -74,13 +109,13 @@ def parse_gmp(gmp_str: str) -> float:
         raise ValueError("Percentage not found in the string")
 
 
-def fetch_ipo_data() -> dict:
+def fetch_ipo_data(gmp_site_url: str) -> dict:
     """Call IPO GMP page and parse IPO related data.
 
     Returns:
         dict: IPO data
-    """    
-    response = get_url(GMP_BASE_URL)
+    """
+    response = get_url(gmp_site_url)
 
     if response.status_code == 200:
         soup = BeautifulSoup(response.text, "html.parser")
@@ -93,7 +128,11 @@ def fetch_ipo_data() -> dict:
         close_date_elements = soup.find_all(attrs={"data-label": "Close"})
 
         # Check if the number of IPO, Est Listing, and Close elements match, assertion should be true.
-        if len(ipo_name_elements) == len(listing_gmp_elements) == len(close_date_elements):
+        if (
+            len(ipo_name_elements)
+            == len(listing_gmp_elements)
+            == len(close_date_elements)
+        ):
             for ipo_name_element, listing_gmp_element, close_date_element in zip(
                 ipo_name_elements, listing_gmp_elements, close_date_elements
             ):
@@ -118,7 +157,9 @@ def fetch_ipo_data() -> dict:
                 ipo_data.append(entry)
 
         else:
-            print("The number of IPO, listing GMP and close date elements do not match.")
+            print(
+                "The number of IPO, listing GMP and close date elements do not match."
+            )
     else:
         print(f"Failed to retrieve the page. Status code: {response.status_code}")
 
@@ -131,11 +172,11 @@ def filter_data(cli_args: ArgumentParser, ipo_data: list) -> dict:
 
     Args:
         cli_args (ArgumentParser): CLI args
-        ipo_data (dict): All available IPOs data 
+        ipo_data (dict): All available IPOs data
 
     Returns:
         dict: filtered IPOs
-    """    
+    """
     filtered_list = []
     gmp_threshold = cli_args.alert_threshold
     days_before_deadline = cli_args.days_before_close
@@ -150,13 +191,13 @@ def filter_data(cli_args: ArgumentParser, ipo_data: list) -> dict:
 
 
 def main():
-    args = cli()
-    ipo_data = fetch_ipo_data()
-    ipo_alerts_data = filter_data(args, ipo_data)
+    cli_args, config = __bootstrap()
+    ipo_data = fetch_ipo_data(config["GMP_BASE_URL"])
+    ipo_alerts_data = filter_data(cli_args, ipo_data)
     for ipo in ipo_alerts_data:
         print(ipo)
-    
 
+    
 
 if __name__ == "__main__":
     main()

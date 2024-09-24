@@ -1,0 +1,5 @@
+[MAIN]
+
+WHAPI_API_URL = https://gate.whapi.cloud/
+WHAPI_TOKEN = <Add Token Here>
+GMP_BASE_URL = https://www.investorgain.com/report/live-ipo-gmp/331/
