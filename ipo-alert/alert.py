@@ -1,4 +1,4 @@
-from requests import get as get_url
+from requests import get, post
 from argparse import ArgumentParser
 from bs4 import BeautifulSoup
 from datetime import datetime
@@ -115,7 +115,7 @@ def fetch_ipo_data(gmp_site_url: str) -> dict:
     Returns:
         dict: IPO data
     """
-    response = get_url(gmp_site_url)
+    response = get(gmp_site_url)
 
     if response.status_code == 200:
         soup = BeautifulSoup(response.text, "html.parser")
@@ -190,14 +190,78 @@ def filter_data(cli_args: ArgumentParser, ipo_data: list) -> dict:
     return filtered_list
 
 
+def format_msg(msg: list, cli: ArgumentParser) -> str:
+    today = datetime.now().strftime("%d %b %Y")
+    formatted_str = f"IPO Alerts for {today}:\n\n"
+
+    for line in msg:
+        formatted_str += f"{line['ipo_name']}\n"
+        formatted_str += f"GMP: **{line['listing_gmp']}**\n"
+        formatted_str += f"Closing On: **{line['close_date']}**\n"
+        formatted_str += "\n"
+
+    return formatted_str
+
+
+### WHAPI Methods ###
+#####################
+
+
+def create_group(config: ConfigParser, users: list) -> str:
+    url = "https://gate.whapi.cloud/groups"
+
+    payload = {"subject": "IPO Alerts", "participants": users}
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "authorization": f"Bearer {config['WHAPI_TOKEN']}",
+    }
+
+    response = post(url, json=payload, headers=headers)
+
+    return response.text
+
+
+def add_user_to_group(config: ConfigParser, users: list) -> str:
+    url = f"https://gate.whapi.cloud/groups/{config['WHAPI_GROUP_ID']}/participants"
+
+    payload = {"participants": users}
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "authorization": f"Bearer {config['WHAPI_TOKEN']}",
+    }
+
+    response = post(url, json=payload, headers=headers)
+
+    return response.text
+
+
+def send_message(config, msg):
+    url = "https://gate.whapi.cloud/messages/text"
+
+    payload = {"typing_time": 0, "to": config["WHAPI_GROUP_ID"], "body": msg}
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "authorization": f"Bearer {config['WHAPI_TOKEN']}",
+    }
+
+    response = post(url, json=payload, headers=headers)
+
+    print(response.text)
+
+
 def main():
     cli_args, config = __bootstrap()
     ipo_data = fetch_ipo_data(config["GMP_BASE_URL"])
     ipo_alerts_data = filter_data(cli_args, ipo_data)
     for ipo in ipo_alerts_data:
         print(ipo)
+    txt = format_msg(ipo_alerts_data, cli_args)
+    print(txt)
+    send_message(config, txt)
 
-    
 
 if __name__ == "__main__":
     main()
