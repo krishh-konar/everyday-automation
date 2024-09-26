@@ -7,34 +7,45 @@ from os import path
 from configparser import ConfigParser
 
 
-def __bootstrap() -> tuple[ArgumentParser, ConfigParser]:
-    args = cli()
-    config = ConfigParser()
+# Setup Global variables for ease of usability
+CLI_ARGS = None
+CONFIG = None
+
+
+def __bootstrap() -> None:
+    """
+    Setup required variable from config files and command line arguments.
+
+    Raises:
+        FileNotFoundError: Raises an Exception if config file is missing.
+        AssertionError: Raises an exception if any required variables are missing.
+    """
+    global CLI_ARGS, CONFIG
+    CLI_ARGS = __cli()
+    CONFIG = ConfigParser()
 
     try:
-        if not path.exists(args.config_path):
+        if not path.exists(CLI_ARGS.config_path):
             raise FileNotFoundError
-        config.read(args.config_path)
+        CONFIG.read(CLI_ARGS.config_path)
 
+        # check if required variables exist
         config_keys_to_check = ["WHAPI_API_URL", "WHAPI_TOKEN", "GMP_BASE_URL"]
-
         for key in config_keys_to_check:
-            assert key in config["MAIN"], f"{key} not found in config!"
-
-        return (args, config["MAIN"])
+            assert key in CONFIG["MAIN"], f"{key} not found in config!"
 
     except AssertionError as e:
         print(f"Configuration Error: {e}")
         exit(-1)
     except FileNotFoundError:
-        print(f"Configuration file {args.config_path} does not exist.")
+        print(f"Configuration file {CLI_ARGS.config_path} does not exist.")
         exit(-1)
     except Exception as e:
         print(f"An exception occured in ConfigParser! : {e}")
         exit(-1)
 
 
-def cli() -> ArgumentParser:
+def __cli() -> ArgumentParser:
     """Bootstrap CLI for the script
 
     Returns:
@@ -109,13 +120,14 @@ def parse_gmp(gmp_str: str) -> float:
         raise ValueError("Percentage not found in the string")
 
 
-def fetch_ipo_data(gmp_site_url: str) -> dict:
+def fetch_ipo_data() -> dict:
     """Call IPO GMP page and parse IPO related data.
 
     Returns:
         dict: IPO data
     """
-    response = get(gmp_site_url)
+    global CONFIG
+    response = get(CONFIG["MAIN"]["GMP_BASE_URL"])
 
     if response.status_code == 200:
         soup = BeautifulSoup(response.text, "html.parser")
@@ -166,7 +178,7 @@ def fetch_ipo_data(gmp_site_url: str) -> dict:
     return ipo_data
 
 
-def filter_data(cli_args: ArgumentParser, ipo_data: list) -> dict:
+def filter_data(ipo_data: list) -> dict:
     """
     Filter out IPOs matching the filtering criteria provided via CLI
 
@@ -177,9 +189,10 @@ def filter_data(cli_args: ArgumentParser, ipo_data: list) -> dict:
     Returns:
         dict: filtered IPOs
     """
+    global CLI_ARGS
     filtered_list = []
-    gmp_threshold = cli_args.alert_threshold
-    days_before_deadline = cli_args.days_before_close
+    gmp_threshold = CLI_ARGS.alert_threshold
+    days_before_deadline = CLI_ARGS.days_before_close
 
     for ipo in ipo_data:
         date_delta = get_date_delta(ipo["close_date"])
@@ -190,14 +203,22 @@ def filter_data(cli_args: ArgumentParser, ipo_data: list) -> dict:
     return filtered_list
 
 
-def format_msg(msg: list, cli: ArgumentParser) -> str:
-    today = datetime.now().strftime("%d %b %Y")
-    formatted_str = f"IPO Alerts for {today}:\n\n"
+def format_msg(msg: list) -> str:
+    """Format the message to be sent to whatsapp from list of IPOs
+
+    Args:
+        msg (list): List of IPOs
+
+    Returns:
+        str: Whatsapp message to be sent
+    """
+    global CLI_ARGS
+    formatted_str = f"*IPO Alerts for the next {CLI_ARGS.days_before_close} days*\n\n"
 
     for line in msg:
-        formatted_str += f"{line['ipo_name']}\n"
-        formatted_str += f"GMP: **{line['listing_gmp']}**\n"
-        formatted_str += f"Closing On: **{line['close_date']}**\n"
+        formatted_str += f"‣ {line['ipo_name']}\n"
+        formatted_str += f"> GMP: *{line['listing_gmp']}*\n"
+        formatted_str += f"> Closing On: *{line['close_date']}*\n"
         formatted_str += "\n"
 
     return formatted_str
@@ -207,14 +228,24 @@ def format_msg(msg: list, cli: ArgumentParser) -> str:
 #####################
 
 
-def create_group(config: ConfigParser, users: list) -> str:
+def create_group(users: list) -> str:
+    """Create a whatsapp group using WHAPI.
+    Probably one time use (fetch group_id from there for later use).
+
+    Args:
+        users (list): List of Phone numbers to add to the group.
+
+    Returns:
+        str: WHAPI response
+    """
+    global CONFIG
     url = "https://gate.whapi.cloud/groups"
 
     payload = {"subject": "IPO Alerts", "participants": users}
     headers = {
         "accept": "application/json",
         "content-type": "application/json",
-        "authorization": f"Bearer {config['WHAPI_TOKEN']}",
+        "authorization": f"Bearer {CONFIG['MAIN']['WHAPI_TOKEN']}",
     }
 
     response = post(url, json=payload, headers=headers)
@@ -222,14 +253,25 @@ def create_group(config: ConfigParser, users: list) -> str:
     return response.text
 
 
-def add_user_to_group(config: ConfigParser, users: list) -> str:
-    url = f"https://gate.whapi.cloud/groups/{config['WHAPI_GROUP_ID']}/participants"
+def add_user_to_group(users: list) -> str:
+    """
+    Add user to an already existing group.
+    Requires `group_id`.
+
+    Args:
+        users (list): List of Phone numbers to add to the group.
+
+    Returns:
+        str: WHAPI response
+    """
+    global CONFIG
+    url = f"https://gate.whapi.cloud/groups/{CONFIG['MAIN']['WHAPI_GROUP_ID']}/participants"
 
     payload = {"participants": users}
     headers = {
         "accept": "application/json",
         "content-type": "application/json",
-        "authorization": f"Bearer {config['WHAPI_TOKEN']}",
+        "authorization": f"Bearer {CONFIG['MAIN']['WHAPI_TOKEN']}",
     }
 
     response = post(url, json=payload, headers=headers)
@@ -237,30 +279,40 @@ def add_user_to_group(config: ConfigParser, users: list) -> str:
     return response.text
 
 
-def send_message(config, msg):
+def send_message(msg: str) -> str:
+    """
+    Send a message to a given whatsapp group.
+    Requires `group_id`.
+
+    Args:
+        msg (str): Whatsapp message to be sent.
+
+    Returns:
+        str: WHAPI response
+    """
+    global CONFIG
     url = "https://gate.whapi.cloud/messages/text"
 
-    payload = {"typing_time": 0, "to": config["WHAPI_GROUP_ID"], "body": msg}
+    payload = {"typing_time": 0, "to": CONFIG["MAIN"]["WHAPI_GROUP_ID"], "body": msg}
     headers = {
         "accept": "application/json",
         "content-type": "application/json",
-        "authorization": f"Bearer {config['WHAPI_TOKEN']}",
+        "authorization": f"Bearer {CONFIG['MAIN']['WHAPI_TOKEN']}",
     }
 
     response = post(url, json=payload, headers=headers)
 
-    print(response.text)
+    return response.text
 
 
 def main():
-    cli_args, config = __bootstrap()
-    ipo_data = fetch_ipo_data(config["GMP_BASE_URL"])
-    ipo_alerts_data = filter_data(cli_args, ipo_data)
+    __bootstrap()
+    ipo_data = fetch_ipo_data()
+    ipo_alerts_data = filter_data(ipo_data)
     for ipo in ipo_alerts_data:
         print(ipo)
-    txt = format_msg(ipo_alerts_data, cli_args)
-    print(txt)
-    send_message(config, txt)
+    txt = format_msg(ipo_alerts_data)
+    send_message(txt)
 
 
 if __name__ == "__main__":
