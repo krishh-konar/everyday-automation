@@ -13,4 +13,5 @@ jobs:
         with:
           python-root-list: "**/*.py"
           use-black: true
-          use-pylint: false
+          use-pylint: true
+          extra-pylint-options: "--disable=R,C"
