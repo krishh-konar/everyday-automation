@@ -97,7 +97,7 @@ def get_date_delta(date_str: str) -> int:
         diff = close_date - current_date
         return diff.days
 
-    except ValueError as e:
+    except ValueError:
         return None
 
 
@@ -126,7 +126,6 @@ def fetch_ipo_data() -> dict:
     Returns:
         dict: IPO data
     """
-    global CONFIG
     response = get(CONFIG["MAIN"]["GMP_BASE_URL"])
 
     if response.status_code == 200:
@@ -189,7 +188,6 @@ def filter_data(ipo_data: list) -> dict:
     Returns:
         dict: filtered IPOs
     """
-    global CLI_ARGS
     filtered_list = []
     gmp_threshold = CLI_ARGS.alert_threshold
     days_before_deadline = CLI_ARGS.days_before_close
@@ -212,7 +210,6 @@ def format_msg(msg: list) -> str:
     Returns:
         str: Whatsapp message to be sent
     """
-    global CLI_ARGS
     formatted_str = f"*IPO Alerts for the next {CLI_ARGS.days_before_close} days*\n\n"
 
     for line in msg:
@@ -238,7 +235,6 @@ def create_group(users: list) -> str:
     Returns:
         str: WHAPI response
     """
-    global CONFIG
     url = "https://gate.whapi.cloud/groups"
 
     payload = {"subject": "IPO Alerts", "participants": users}
@@ -264,7 +260,6 @@ def add_user_to_group(users: list) -> str:
     Returns:
         str: WHAPI response
     """
-    global CONFIG
     url = f"https://gate.whapi.cloud/groups/{CONFIG['MAIN']['WHAPI_GROUP_ID']}/participants"
 
     payload = {"participants": users}
@@ -290,7 +285,6 @@ def send_message(msg: str) -> str:
     Returns:
         str: WHAPI response
     """
-    global CONFIG
     url = "https://gate.whapi.cloud/messages/text"
 
     payload = {"typing_time": 0, "to": CONFIG["MAIN"]["WHAPI_GROUP_ID"], "body": msg}
