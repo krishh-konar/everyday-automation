@@ -1,18 +1,56 @@
-from requests import get as get_url
+from requests import get, post
 from argparse import ArgumentParser
 from bs4 import BeautifulSoup
 from datetime import datetime
 from re import search
+from os import path
+from configparser import ConfigParser
 
 
-GMP_BASE_URL = "https://www.investorgain.com/report/live-ipo-gmp/331/"
+# Setup Global variables for ease of usability
+CLI_ARGS = None
+CONFIG = None
 
-def cli() -> ArgumentParser:
+
+def __bootstrap() -> None:
+    """
+    Setup required variable from config files and command line arguments.
+
+    Raises:
+        FileNotFoundError: Raises an Exception if config file is missing.
+        AssertionError: Raises an exception if any required variables are missing.
+    """
+    global CLI_ARGS, CONFIG
+    CLI_ARGS = __cli()
+    CONFIG = ConfigParser()
+
+    try:
+        if not path.exists(CLI_ARGS.config_path):
+            raise FileNotFoundError
+        CONFIG.read(CLI_ARGS.config_path)
+
+        # check if required variables exist
+        config_keys_to_check = ["WHAPI_API_URL", "WHAPI_TOKEN", "GMP_BASE_URL"]
+        for key in config_keys_to_check:
+            assert key in CONFIG["MAIN"], f"{key} not found in config!"
+
+    except AssertionError as e:
+        print(f"Configuration Error: {e}")
+        exit(-1)
+    except FileNotFoundError:
+        print(f"Configuration file {CLI_ARGS.config_path} does not exist.")
+        exit(-1)
+    except Exception as e:
+        print(f"An exception occured in ConfigParser! : {e}")
+        exit(-1)
+
+
+def __cli() -> ArgumentParser:
     """Bootstrap CLI for the script
 
     Returns:
         ArgumentParser: CLI arguments
-    """ 
+    """
     parser = ArgumentParser(
         description="Send IPO application alerts to configured endpoints."
     )
@@ -30,30 +68,38 @@ def cli() -> ArgumentParser:
         default=20.0,
         help="GMP threshold value; percentage above which to return IPOs.",
     )
+    parser.add_argument(
+        "-f",
+        "--config-path",
+        type=str,
+        default=".config",
+        help="Path to the config file (Default: ./.config).",
+    )
 
     return parser.parse_args()
 
+
 def get_date_delta(date_str: str) -> int:
-    """returns the difference between the ipo deadline date and the current date. 
+    """returns the difference between the ipo deadline date and the current date.
 
     Args:
         date_str (str): close date on the ipo
 
     Returns:
         int: difference b/w current and close date
-    """    
+    """
     date_format = "%d-%b-%Y"
-    
+
     try:
         current_date = datetime.now()
         close_date = datetime.strptime(f"{date_str}-{current_date.year}", date_format)
-        
+
         diff = close_date - current_date
         return diff.days
 
     except ValueError as e:
-        print(f"Error parsing date: {e}")
         return None
+
 
 def parse_gmp(gmp_str: str) -> float:
     """returns percentage value for ipo gmp from the raw string
@@ -66,7 +112,7 @@ def parse_gmp(gmp_str: str) -> float:
     """
 
     # percentage value always in paranthesis
-    match = search(r'\((\d+\.\d+)%\)', gmp_str)
+    match = search(r"\((\d+\.\d+)%\)", gmp_str)
     if match:
         percentage_str = match.group(1)
         return float(percentage_str)
@@ -79,8 +125,9 @@ def fetch_ipo_data() -> dict:
 
     Returns:
         dict: IPO data
-    """    
-    response = get_url(GMP_BASE_URL)
+    """
+    global CONFIG
+    response = get(CONFIG["MAIN"]["GMP_BASE_URL"])
 
     if response.status_code == 200:
         soup = BeautifulSoup(response.text, "html.parser")
@@ -93,7 +140,11 @@ def fetch_ipo_data() -> dict:
         close_date_elements = soup.find_all(attrs={"data-label": "Close"})
 
         # Check if the number of IPO, Est Listing, and Close elements match, assertion should be true.
-        if len(ipo_name_elements) == len(listing_gmp_elements) == len(close_date_elements):
+        if (
+            len(ipo_name_elements)
+            == len(listing_gmp_elements)
+            == len(close_date_elements)
+        ):
             for ipo_name_element, listing_gmp_element, close_date_element in zip(
                 ipo_name_elements, listing_gmp_elements, close_date_elements
             ):
@@ -118,27 +169,30 @@ def fetch_ipo_data() -> dict:
                 ipo_data.append(entry)
 
         else:
-            print("The number of IPO, listing GMP and close date elements do not match.")
+            print(
+                "The number of IPO, listing GMP and close date elements do not match."
+            )
     else:
         print(f"Failed to retrieve the page. Status code: {response.status_code}")
 
     return ipo_data
 
 
-def filter_data(cli_args: ArgumentParser, ipo_data: list) -> dict:
+def filter_data(ipo_data: list) -> dict:
     """
     Filter out IPOs matching the filtering criteria provided via CLI
 
     Args:
         cli_args (ArgumentParser): CLI args
-        ipo_data (dict): All available IPOs data 
+        ipo_data (dict): All available IPOs data
 
     Returns:
         dict: filtered IPOs
-    """    
+    """
+    global CLI_ARGS
     filtered_list = []
-    gmp_threshold = cli_args.alert_threshold
-    days_before_deadline = cli_args.days_before_close
+    gmp_threshold = CLI_ARGS.alert_threshold
+    days_before_deadline = CLI_ARGS.days_before_close
 
     for ipo in ipo_data:
         date_delta = get_date_delta(ipo["close_date"])
@@ -149,13 +203,116 @@ def filter_data(cli_args: ArgumentParser, ipo_data: list) -> dict:
     return filtered_list
 
 
+def format_msg(msg: list) -> str:
+    """Format the message to be sent to whatsapp from list of IPOs
+
+    Args:
+        msg (list): List of IPOs
+
+    Returns:
+        str: Whatsapp message to be sent
+    """
+    global CLI_ARGS
+    formatted_str = f"*IPO Alerts for the next {CLI_ARGS.days_before_close} days*\n\n"
+
+    for line in msg:
+        formatted_str += f"‣ {line['ipo_name']}\n"
+        formatted_str += f"> GMP: *{line['listing_gmp']}*\n"
+        formatted_str += f"> Closing On: *{line['close_date']}*\n"
+        formatted_str += "\n"
+
+    return formatted_str
+
+
+### WHAPI Methods ###
+#####################
+
+
+def create_group(users: list) -> str:
+    """Create a whatsapp group using WHAPI.
+    Probably one time use (fetch group_id from there for later use).
+
+    Args:
+        users (list): List of Phone numbers to add to the group.
+
+    Returns:
+        str: WHAPI response
+    """
+    global CONFIG
+    url = "https://gate.whapi.cloud/groups"
+
+    payload = {"subject": "IPO Alerts", "participants": users}
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "authorization": f"Bearer {CONFIG['MAIN']['WHAPI_TOKEN']}",
+    }
+
+    response = post(url, json=payload, headers=headers)
+
+    return response.text
+
+
+def add_user_to_group(users: list) -> str:
+    """
+    Add user to an already existing group.
+    Requires `group_id`.
+
+    Args:
+        users (list): List of Phone numbers to add to the group.
+
+    Returns:
+        str: WHAPI response
+    """
+    global CONFIG
+    url = f"https://gate.whapi.cloud/groups/{CONFIG['MAIN']['WHAPI_GROUP_ID']}/participants"
+
+    payload = {"participants": users}
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "authorization": f"Bearer {CONFIG['MAIN']['WHAPI_TOKEN']}",
+    }
+
+    response = post(url, json=payload, headers=headers)
+
+    return response.text
+
+
+def send_message(msg: str) -> str:
+    """
+    Send a message to a given whatsapp group.
+    Requires `group_id`.
+
+    Args:
+        msg (str): Whatsapp message to be sent.
+
+    Returns:
+        str: WHAPI response
+    """
+    global CONFIG
+    url = "https://gate.whapi.cloud/messages/text"
+
+    payload = {"typing_time": 0, "to": CONFIG["MAIN"]["WHAPI_GROUP_ID"], "body": msg}
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "authorization": f"Bearer {CONFIG['MAIN']['WHAPI_TOKEN']}",
+    }
+
+    response = post(url, json=payload, headers=headers)
+
+    return response.text
+
+
 def main():
-    args = cli()
+    __bootstrap()
     ipo_data = fetch_ipo_data()
-    ipo_alerts_data = filter_data(args, ipo_data)
+    ipo_alerts_data = filter_data(ipo_data)
     for ipo in ipo_alerts_data:
         print(ipo)
-    
+    txt = format_msg(ipo_alerts_data)
+    send_message(txt)
 
 
 if __name__ == "__main__":
