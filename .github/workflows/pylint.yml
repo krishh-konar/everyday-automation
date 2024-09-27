@@ -14,7 +14,7 @@ jobs:
         python-version: 3.9
     - uses: marian-code/python-lint-annotate@v4
       with:
-        python-root-list: "./*.py"
+        python-root-list: "**/*.py"
         use-black: true
         # use-isort: true
         # use-mypy: true
