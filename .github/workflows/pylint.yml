@@ -12,11 +12,9 @@ jobs:
     - uses: actions/setup-python@v5
       with:
         python-version: 3.9
-    - run: |
-        python --version
     - uses: marian-code/python-lint-annotate@v4
       with:
-        python-root-list: "*.py"
+        python-root-list: "./*.py"
         use-black: true
         # use-isort: true
         # use-mypy: true
@@ -27,5 +25,3 @@ jobs:
         # use-flake8: false
         # use-vulture: true
         python-version: "3.8"
-    - run: |
-        python --version
