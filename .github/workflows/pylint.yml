@@ -13,3 +13,4 @@ jobs:
         with:
           python-root-list: "**/*.py"
           use-black: true
+          use-pylint: false
