@@ -13,8 +13,7 @@ jobs:
       with:
         python-version: 3.9
     - run: |
-        python --version  # this will output 3.9 now
-        run tests or other things using python ...
+        python --version
     - uses: marian-code/python-lint-annotate@v4
       with:
         python-root-list: "*.py"
@@ -29,4 +28,4 @@ jobs:
         # use-vulture: true
         python-version: "3.8"
     - run: |
-        python --version  # this will output 3.8 now !!!
+        python --version
