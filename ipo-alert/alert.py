@@ -51,8 +51,6 @@ def __bootstrap() -> None:
             print("No Config mode selected, exiting!")
             exit(-1)
 
-        print(CLI_ARGS.config_file, CLI_ARGS.github_secrets)
-        print(CONFIG["MAIN"]["GMP_BASE_URL"])
         # check if required variables exist
         config_keys_to_check = ["WHAPI_API_URL", "WHAPI_TOKEN", "GMP_BASE_URL"]
         for key in config_keys_to_check:
@@ -354,9 +352,8 @@ def main():
 
     ipo_data = fetch_ipo_data()
     ipo_alerts_data = filter_data(ipo_data)
-    for ipo in ipo_alerts_data:
-        print(ipo)
     message = format_msg(ipo_alerts_data)
+    print(message)
     if not CLI_ARGS.dry_run:
         send_message(message)
 
