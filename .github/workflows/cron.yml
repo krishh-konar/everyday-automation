@@ -1,7 +1,7 @@
 name: Run IPO Alerts Cron
 on:
   schedule:
-    - cron: "*/3 * * * *"
+    - cron: "*/6 * * * *"
 
 jobs:
   ipo-cron:
@@ -10,7 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: f/cron-workflow
+          ref: f/cron-test
       - name: Install dependencies
         run: |
           python -m pip install -r ipo-alert/requirements.txt
