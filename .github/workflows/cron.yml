@@ -19,4 +19,4 @@ jobs:
           WHAPI_API_URL: ${{ env.WHAPI_API_URL }}
           GMP_BASE_URL: ${{ env.GMP_BASE_URL }}
         run: |
-          python ipo-alert/alert.py -d 5 -t 10 --dry-run
+          python ipo-alert/alert.py -d 5 -t 10 --dry-run --github-secrets
