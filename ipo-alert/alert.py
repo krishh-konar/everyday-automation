@@ -3,7 +3,7 @@ from argparse import ArgumentParser
 from bs4 import BeautifulSoup
 from datetime import datetime
 from re import search
-from os import path
+from os import path, getenv
 from configparser import ConfigParser
 
 
@@ -22,23 +22,47 @@ def __bootstrap() -> None:
     """
     global CLI_ARGS, CONFIG
     CLI_ARGS = __cli()
-    CONFIG = ConfigParser()
+
+    if CLI_ARGS.github_secrets:
+        config_mode = "github_secrets"
+    else:
+        config_mode = "config_file"
 
     try:
-        if not path.exists(CLI_ARGS.config_path):
-            raise FileNotFoundError
-        CONFIG.read(CLI_ARGS.config_path)
+        if config_mode == "config_file":
+            # Read config from config file
+            CONFIG = ConfigParser()
+            if not path.exists(CLI_ARGS.file_path):
+                raise FileNotFoundError
+            CONFIG.read(CLI_ARGS.file_path)
+
+        elif config_mode == "github_secrets":
+            # Read config from environment variables
+            CONFIG = {
+                "MAIN": {
+                    "WHAPI_API_URL": getenv("MY_SECRET"),
+                    "WHAPI_TOKEN": getenv("WHAPI_TOKEN"),
+                    "WHAPI_GROUP_ID": getenv("WHAPI_GROUP_ID"),
+                    "GMP_BASE_URL": getenv("GMP_BASE_URL"),
+                }
+            }
+
+        else:
+            print("No Config mode selected, exiting!")
+            exit(-1)
 
         # check if required variables exist
         config_keys_to_check = ["WHAPI_API_URL", "WHAPI_TOKEN", "GMP_BASE_URL"]
         for key in config_keys_to_check:
-            assert key in CONFIG["MAIN"], f"{key} not found in config!"
+            assert (
+                key in CONFIG["MAIN"] and CONFIG["MAIN"][key] is not None
+            ), f"{key} not found in config!"
 
     except AssertionError as e:
         print(f"Configuration Error: {e}")
         exit(-1)
     except FileNotFoundError:
-        print(f"Configuration file {CLI_ARGS.config_path} does not exist.")
+        print(f"Configuration file {CLI_ARGS.file_path} does not exist.")
         exit(-1)
     except Exception as e:
         print(f"An exception occured in ConfigParser! : {e}")
@@ -70,10 +94,28 @@ def __cli() -> ArgumentParser:
     )
     parser.add_argument(
         "-f",
-        "--config-path",
+        "--file-path",
         type=str,
         default=".config",
         help="Path to the config file (Default: ./.config).",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Get IPO info without sending whatsapp message.",
+    )
+
+    # Adding mutually exclusive group for config modes
+    config_type = parser.add_mutually_exclusive_group(required=False)
+    config_type.add_argument(
+        "--config-file",
+        action="store_true",
+        help="Use configuration from a file (default mode)",
+    )
+    config_type.add_argument(
+        "--github-secrets",
+        action="store_true",
+        help="Use GitHub secrets for configuration",
     )
 
     return parser.parse_args()
@@ -301,12 +343,19 @@ def send_message(msg: str) -> str:
 
 def main():
     __bootstrap()
+
+    # Enable for first time-run
+    #
+    # initial_users = ["<Phone Numbers>"]
+    # resp = create_group(initial_users)
+    # print(resp)
+
     ipo_data = fetch_ipo_data()
     ipo_alerts_data = filter_data(ipo_data)
-    for ipo in ipo_alerts_data:
-        print(ipo)
-    txt = format_msg(ipo_alerts_data)
-    send_message(txt)
+    message = format_msg(ipo_alerts_data)
+    print(message)
+    if not CLI_ARGS.dry_run:
+        send_message(message)
 
 
 if __name__ == "__main__":
