@@ -1,6 +1,6 @@
 # Send IPO Alerts
 
-This script fetches subscription information from upcoming IPOs to be listed on NSE/BSE and sends alerts.
+This script fetches subscription information for upcoming IPOs to be listed on NSE/BSE and sends alerts.
 Uses data from [Investor Gain](https://www.investorgain.com/report/live-ipo-gmp/331/) and [Whapi](https://whapi.cloud/) to send whatsapp messages.
 
 ## Instructions
