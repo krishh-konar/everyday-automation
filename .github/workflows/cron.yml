@@ -1,0 +1,21 @@
+on:
+  schedule:
+    - cron: '*/3 * * * *'
+
+jobs:
+  ipo-cron:
+    name: IPO Alerts Daily Cron
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          python -m pip install -r ipo-alert/requirements.txt
+      - name: Run IPO Alert script
+        env:
+          WHAPI_TOKEN: ${{ secrets.WHAPI_TOKEN }}
+          WHAPI_GROUP_ID: ${{ secrets.WHAPI_GROUP_ID }}
+          WHAPI_API_URL: ${{ env.WHAPI_API_URL }}
+          GMP_BASE_URL: ${{ env.GMP_BASE_URL }}
+        run: |
+          python ipo-alert/alert.py -d 5 -t 10 --dry-run
