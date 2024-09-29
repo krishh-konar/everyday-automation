@@ -18,7 +18,7 @@ jobs:
         env:
           WHAPI_TOKEN: ${{ secrets.WHAPI_TOKEN }}
           WHAPI_GROUP_ID: ${{ secrets.WHAPI_GROUP_ID }}
-          WHAPI_API_URL: ${{ env.WHAPI_API_URL }}
-          GMP_BASE_URL: ${{ env.GMP_BASE_URL }}
+          WHAPI_API_URL: ${{ vars.WHAPI_API_URL }}
+          GMP_BASE_URL: ${{ vars.GMP_BASE_URL }}
         run: |
           python ipo-alert/alert.py -d 5 -t 10 --dry-run --github-secrets
