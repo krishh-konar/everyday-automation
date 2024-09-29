@@ -1,7 +1,7 @@
 name: Run IPO Alerts Cron
 on:
   schedule:
-    - cron: "*/6 * * * *"
+    - cron: "*/15 * * * *"
 
 jobs:
   ipo-cron:
