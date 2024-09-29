@@ -40,7 +40,7 @@ def __bootstrap() -> None:
             # Read config from environment variables
             CONFIG = {
                 "MAIN": {
-                    "WHAPI_API_URL": getenv("MY_SECRET"),
+                    "WHAPI_API_URL": getenv("WHAPI_API_URL"),
                     "WHAPI_TOKEN": getenv("WHAPI_TOKEN"),
                     "WHAPI_GROUP_ID": getenv("WHAPI_GROUP_ID"),
                     "GMP_BASE_URL": getenv("GMP_BASE_URL"),
