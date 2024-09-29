@@ -1,7 +1,7 @@
 name: Run IPO Alerts Cron
 on:
   schedule:
-    - cron: "*/15 * * * *"
+    - cron: "15 * * * *"
 
 jobs:
   ipo-cron:
@@ -19,4 +19,4 @@ jobs:
           WHAPI_API_URL: ${{ vars.WHAPI_API_URL }}
           GMP_BASE_URL: ${{ vars.GMP_BASE_URL }}
         run: |
-          python ipo-alert/alert.py -d 5 -t 10 --dry-run --github-secrets
+          python ipo-alert/alert.py -d 5 -t 10 --github-secrets
