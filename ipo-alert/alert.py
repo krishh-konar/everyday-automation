@@ -4,12 +4,14 @@ from bs4 import BeautifulSoup
 from datetime import datetime
 from re import search
 from os import path, getenv
+import logging
 from configparser import ConfigParser
 
 
 # Setup Global variables for ease of usability
 CLI_ARGS = None
 CONFIG = None
+LOGGER = None
 
 
 def __bootstrap() -> None:
@@ -20,8 +22,14 @@ def __bootstrap() -> None:
         FileNotFoundError: Raises an Exception if config file is missing.
         AssertionError: Raises an exception if any required variables are missing.
     """
-    global CLI_ARGS, CONFIG
+    global CLI_ARGS, CONFIG, LOGGER
     CLI_ARGS = __cli()
+
+    logging.basicConfig(
+        level=CLI_ARGS.log_level,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
+    LOGGER = logging.getLogger(__name__)
 
     if CLI_ARGS.github_secrets:
         config_mode = "github_secrets"
@@ -48,7 +56,7 @@ def __bootstrap() -> None:
             }
 
         else:
-            print("No Config mode selected, exiting!")
+            LOGGER.error("No Config mode selected, exiting!")
             exit(-1)
 
         # check if required variables exist
@@ -59,13 +67,13 @@ def __bootstrap() -> None:
             ), f"{key} not found in config!"
 
     except AssertionError as e:
-        print(f"Configuration Error: {e}")
+        LOGGER.error(f"Configuration Error: {e}")
         exit(-1)
     except FileNotFoundError:
-        print(f"Configuration file {CLI_ARGS.file_path} does not exist.")
+        LOGGER.error(f"Configuration file {CLI_ARGS.file_path} does not exist.")
         exit(-1)
     except Exception as e:
-        print(f"An exception occured in ConfigParser! : {e}")
+        LOGGER.error(f"An exception occured in ConfigParser! : {e}")
         exit(-1)
 
 
@@ -103,6 +111,12 @@ def __cli() -> ArgumentParser:
         "--dry-run",
         action="store_true",
         help="Get IPO info without sending whatsapp message.",
+    )
+    parser.add_argument(
+        "--log-level",
+        default="INFO",
+        choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        help="Set the logging level (default: INFO)",
     )
 
     # Adding mutually exclusive group for config modes
@@ -210,11 +224,11 @@ def fetch_ipo_data() -> dict:
                 ipo_data.append(entry)
 
         else:
-            print(
+            LOGGER.error(
                 "The number of IPO, listing GMP and close date elements do not match."
             )
     else:
-        print(f"Failed to retrieve the page. Status code: {response.status_code}")
+        LOGGER.error(f"Failed to retrieve the page. Status code: {response.status_code}")
 
     return ipo_data
 
@@ -240,6 +254,7 @@ def filter_data(ipo_data: list) -> dict:
             if parse_gmp(ipo["listing_gmp"]) >= gmp_threshold:
                 filtered_list.append(ipo)
 
+    LOGGER.debug(filtered_list)
     return filtered_list
 
 
@@ -288,6 +303,7 @@ def create_group(users: list) -> str:
 
     response = post(url, json=payload, headers=headers)
 
+    LOGGER.debug(response.text)
     return response.text
 
 
@@ -313,6 +329,7 @@ def add_user_to_group(users: list) -> str:
 
     response = post(url, json=payload, headers=headers)
 
+    LOGGER.debug(response.text)
     return response.text
 
 
@@ -338,6 +355,7 @@ def send_message(msg: str) -> str:
 
     response = post(url, json=payload, headers=headers)
 
+    LOGGER.debug(response.text)
     return response.text
 
 
@@ -348,12 +366,13 @@ def main():
     #
     # initial_users = ["<Phone Numbers>"]
     # resp = create_group(initial_users)
-    # print(resp)
+    # LOGGER.info(resp)
 
     ipo_data = fetch_ipo_data()
     ipo_alerts_data = filter_data(ipo_data)
     message = format_msg(ipo_alerts_data)
-    print(message)
+    LOGGER.info(message)
+
     if not CLI_ARGS.dry_run:
         send_message(message)
 
