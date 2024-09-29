@@ -9,6 +9,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+<<<<<<< HEAD
+=======
+        with:
+          ref: f/cron-test
+>>>>>>> ac12421 (fixed cron timings (#8))
       - name: Install dependencies
         run: |
           python -m pip install -r ipo-alert/requirements.txt
