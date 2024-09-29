@@ -1,5 +1,7 @@
 # Send IPO Alerts
 
+[![Run IPO Alerts Cron](https://github.com/krishh-konar/everyday-automation/actions/workflows/cron.yml/badge.svg)](https://github.com/krishh-konar/everyday-automation/actions/workflows/cron.yml)
+
 This script fetches subscription information for upcoming IPOs to be listed on NSE/BSE and sends alerts.
 Uses data from [Investor Gain](https://www.investorgain.com/report/live-ipo-gmp/331/) and [Whapi](https://whapi.cloud/) to send whatsapp messages.
 
