@@ -267,6 +267,9 @@ def format_msg(msg: list) -> str:
     Returns:
         str: Whatsapp message to be sent
     """
+    if not msg:
+        return ""
+        
     formatted_str = f"*IPO Alerts for the next {CLI_ARGS.days_before_close} days*\n\n"
 
     for line in msg:
@@ -371,10 +374,14 @@ def main():
     ipo_data = fetch_ipo_data()
     ipo_alerts_data = filter_data(ipo_data)
     message = format_msg(ipo_alerts_data)
-    LOGGER.info(message)
+    if message:
+        LOGGER.info(message)
+    else:
+        LOGGER.info("No upcoming IPOs with matching criteria!")
 
-    if not CLI_ARGS.dry_run:
+    if not CLI_ARGS.dry_run and message:
         send_message(message)
+        return
 
 
 if __name__ == "__main__":
