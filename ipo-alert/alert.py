@@ -5,6 +5,7 @@ from datetime import datetime
 from re import search
 from os import path, getenv
 import logging
+from collections import defaultdict
 from configparser import ConfigParser
 
 
@@ -186,49 +187,38 @@ def fetch_ipo_data() -> dict:
 
     if response.status_code == 200:
         soup = BeautifulSoup(response.text, "html.parser")
-
         ipo_data = []
 
-        # Data present in elements with data-label="IPO", "Est Listing", and "Close"
-        ipo_name_elements = soup.find_all(attrs={"data-label": "IPO"})
-        listing_gmp_elements = soup.find_all(attrs={"data-label": "Est Listing"})
-        close_date_elements = soup.find_all(attrs={"data-label": "Close"})
+        rows = soup.find_all('tr')  # scan all rows
 
-        # Check if the number of IPO, Est Listing, and Close elements match, assertion should be true.
-        if (
-            len(ipo_name_elements)
-            == len(listing_gmp_elements)
-            == len(close_date_elements)
-        ):
-            for ipo_name_element, listing_gmp_element, close_date_element in zip(
-                ipo_name_elements, listing_gmp_elements, close_date_elements
-            ):
-                # Find the <a> tag with target="_parent" within each IPO element
-                a_tag = ipo_name_element.find("a", attrs={"target": "_parent"})
-                if a_tag:
-                    # Remove all <span> tags from the <a> tag's contents, this contains additional listing data
-                    for span in a_tag.find_all("span"):
+        for row in rows:
+            entry = defaultdict(str)
+
+            # Data present in elements with data-label="IPO", "Est Listing", and "Close"
+            ipo_tag = row.find('td', attrs={'data-label': 'IPO'})
+            if ipo_tag:
+                # Find the <a> tag within this td to get the URL and name
+                ipo_link = ipo_tag.find('a')
+                if ipo_link:
+                    entry['ipo_url'] = ipo_link['href'] 
+                    for span in ipo_link.find_all("span"):
                         span.decompose()
-                    ipo_name = a_tag.get_text(strip=True)
-                else:
-                    ipo_name = None
+                    entry['ipo_name'] = ipo_link.get_text(strip=True)
+            
+            est_listing_tag = row.find('td', attrs={'data-label': 'Est Listing'})
+            if est_listing_tag:
+                entry['listing_gmp'] = est_listing_tag.text.strip()
+            
+            close_tag = row.find('td', attrs={'data-label': 'Close'})
+            if close_tag:
+                entry['close_date'] = close_tag.text.strip()
 
-                listing_gmp = listing_gmp_element.get_text(strip=True)
-                close_date = close_date_element.get_text(strip=True)
+            ipo_data.append(entry)
 
-                entry = {
-                    "ipo_name": ipo_name,
-                    "listing_gmp": listing_gmp,
-                    "close_date": close_date,
-                }
-                ipo_data.append(entry)
-
-        else:
-            LOGGER.error(
-                "The number of IPO, listing GMP and close date elements do not match."
-            )
     else:
-        LOGGER.error(f"Failed to retrieve the page. Status code: {response.status_code}")
+        LOGGER.error(
+            f"Failed to retrieve the page. Status code: {response.status_code}"
+        )
 
     return ipo_data
 
@@ -249,12 +239,22 @@ def filter_data(ipo_data: list) -> dict:
     days_before_deadline = CLI_ARGS.days_before_close
 
     for ipo in ipo_data:
+        if ipo["ipo_name"] == "":
+            # handle edge cases for non IPO rows
+            pass
+        if ipo['close'] == '':
+            LOGGER.debug(f"IPO close missing for {ipo['ipo_name']}, skipping!")
+            pass
+        if ipo['listing_gmp'] == '--':
+            LOGGER.debug(f"IPO gmp missing for {ipo['ipo_name']}, skipping!")
+            pass
+        
         date_delta = get_date_delta(ipo["close_date"])
         if date_delta and date_delta >= 0 and date_delta < days_before_deadline:
             if parse_gmp(ipo["listing_gmp"]) >= gmp_threshold:
                 filtered_list.append(ipo)
 
-    LOGGER.debug(filtered_list)
+    LOGGER.debug("Filtered List: \n", filtered_list)
     return filtered_list
 
 
@@ -269,13 +269,14 @@ def format_msg(msg: list) -> str:
     """
     if not msg:
         return ""
-        
+
     formatted_str = f"*IPO Alerts for the next {CLI_ARGS.days_before_close} days*\n\n"
 
     for line in msg:
         formatted_str += f"‣ {line['ipo_name']}\n"
         formatted_str += f"> GMP: *{line['listing_gmp']}*\n"
         formatted_str += f"> Closing On: *{line['close_date']}*\n"
+        formatted_str += f"> URL: *{line['ipo_url']}*\n"
         formatted_str += "\n"
 
     return formatted_str
@@ -361,6 +362,50 @@ def send_message(msg: str) -> str:
     LOGGER.debug(response.text)
     return response.text
 
+def dummy():
+    url = 'https://www.investorgain.com/report/live-ipo-gmp/331/'
+
+    # Make a request to fetch the content of the page
+    response = get(url)
+    html_content = response.text
+
+    # Parse the page content using BeautifulSoup
+    soup = BeautifulSoup(html_content, 'html.parser')
+
+    # List to store IPO information
+    ipo_data = []
+
+    # Find all the table rows
+    rows = soup.find_all('tr')  # Assuming data is in table rows
+
+    # Loop through each row and fetch details for IPO, Est Listing, and Close
+    for row in rows:
+        ipo_info = {}
+        
+        ipo_tag = row.find('td', attrs={'data-label': 'IPO'})
+        if ipo_tag:
+            # Find the <a> tag within this td to get the URL and name
+            ipo_link = ipo_tag.find('a')
+            if ipo_link:
+                ipo_info['IPO URL'] = ipo_link['href']  # Extract URL
+                ipo_info['IPO Name'] = ipo_link.text.strip()  # Extract IPO name text
+        
+        # Get Est Listing text from 'td' tag with data-label='Est Listing'
+        est_listing_tag = row.find('td', attrs={'data-label': 'Est Listing'})
+        if est_listing_tag:
+            ipo_info['Est Listing'] = est_listing_tag.text.strip()
+        
+        # Get Close text from 'td' tag with data-label='Close'
+        close_tag = row.find('td', attrs={'data-label': 'Close'})
+        if close_tag:
+            ipo_info['Close'] = close_tag.text.strip()
+        
+        ipo_data.append(ipo_info)
+
+    # Print the extracted data
+    for data in ipo_data:
+        print(data)
+
 
 def main():
     __bootstrap()
@@ -370,8 +415,10 @@ def main():
     # initial_users = ["<Phone Numbers>"]
     # resp = create_group(initial_users)
     # LOGGER.info(resp)
+    # dummy()
 
     ipo_data = fetch_ipo_data()
+    print(ipo_data)
     ipo_alerts_data = filter_data(ipo_data)
     message = format_msg(ipo_alerts_data)
     if message:
