@@ -28,7 +28,7 @@ def __bootstrap() -> None:
     CLI_ARGS = __cli()
 
     logging.basicConfig(
-        level=CLI_ARGS.log_level.upper(),
+        level=CLI_ARGS.log_level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
     LOGGER = logging.getLogger(__name__)
@@ -69,13 +69,13 @@ def __bootstrap() -> None:
             ), f"{key} not found in config!"
 
     except AssertionError as e:
-        LOGGER.error(f"Configuration Error: {e}")
+        LOGGER.error("Configuration Error: %s", e)
         exit(-1)
     except FileNotFoundError:
-        LOGGER.error(f"Configuration file {CLI_ARGS.file_path} does not exist.")
+        LOGGER.error("Configuration file %s does not exist.", CLI_ARGS.file_path)
         exit(-1)
     except Exception as e:
-        LOGGER.error(f"An exception occured in ConfigParser! : {e}")
+        LOGGER.error("An exception occured in ConfigParser! : %s", e)
         exit(-1)
 
 
@@ -118,6 +118,7 @@ def __cli() -> ArgumentParser:
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
+        type=str.upper,
         help="Set the logging level (default: INFO)",
     )
 
@@ -170,9 +171,9 @@ def parse_gmp(gmp_str: str) -> float:
     """
 
     # percentage value always in paranthesis
-    match = search(r"\((\d+\.\d+)%\)", gmp_str)
-    if match:
-        percentage_str = match.group(1)
+    pattern_match = search(r"\((\d+\.\d+)%\)", gmp_str)
+    if pattern_match:
+        percentage_str = pattern_match.group(1)
         return float(percentage_str)
     else:
         raise ValueError("Percentage not found in the string")
@@ -222,7 +223,7 @@ def fetch_ipo_data() -> dict:
 
     else:
         LOGGER.error(
-            f"Failed to retrieve the page. Status code: {response.status_code}"
+            "Failed to retrieve the page. Status code: %s", response.status_code
         )
 
     return ipo_data
@@ -285,7 +286,7 @@ def fetch_subscription_info(url: str) -> dict:
                 last_row_data["bidding_day"] = institution.group(2)
                 last_row_data[institution.group(1)] = cell.text.strip()
 
-    LOGGER.debug(f"Subscription Info for url: {url}")
+    LOGGER.debug("Subscription Info for url: %s", url)
     LOGGER.debug("%s", last_row_data)
     return last_row_data
 
@@ -310,10 +311,10 @@ def filter_data(ipo_data: list) -> dict:
             # handle edge cases for non IPO rows
             continue
         if ipo["close_date"] == "":
-            LOGGER.debug(f"IPO close missing for {ipo['ipo_name']}, skipping!")
+            LOGGER.debug("IPO close missing for %s, skipping!", ipo["ipo_name"])
             continue
         if ipo["listing_gmp"] == "--":
-            LOGGER.debug(f"IPO gmp missing for {ipo['ipo_name']}, skipping!")
+            LOGGER.debug("IPO gmp missing for %s, skipping!", ipo["ipo_name"])
             continue
 
         date_delta = get_date_delta(ipo["close_date"])
