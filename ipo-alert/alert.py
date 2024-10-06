@@ -2,12 +2,13 @@ from requests import get, post
 from argparse import ArgumentParser
 from bs4 import BeautifulSoup
 from datetime import datetime
-from re import search
+from re import search, match
 from os import path, getenv
-import logging
 from collections import defaultdict
+from urllib.parse import urlparse
 from configparser import ConfigParser
-
+from pprint import pformat
+import logging
 
 # Setup Global variables for ease of usability
 CLI_ARGS = None
@@ -27,7 +28,7 @@ def __bootstrap() -> None:
     CLI_ARGS = __cli()
 
     logging.basicConfig(
-        level=CLI_ARGS.log_level,
+        level=CLI_ARGS.log_level.upper(),
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
     )
     LOGGER = logging.getLogger(__name__)
@@ -183,35 +184,39 @@ def fetch_ipo_data() -> dict:
     Returns:
         dict: IPO data
     """
-    response = get(CONFIG["MAIN"]["GMP_BASE_URL"])
+    response = get(url=CONFIG["MAIN"]["GMP_BASE_URL"])
+
+    # the urls we get are relavtive urls, will need to append the hostname
+    base_url = urlparse(CONFIG["MAIN"]["GMP_BASE_URL"])
+    hostname = f"{base_url.scheme}://{base_url.netloc}"
 
     if response.status_code == 200:
         soup = BeautifulSoup(response.text, "html.parser")
         ipo_data = []
 
-        rows = soup.find_all('tr')  # scan all rows
+        rows = soup.find_all("tr")  # scan all rows
 
         for row in rows:
             entry = defaultdict(str)
 
             # Data present in elements with data-label="IPO", "Est Listing", and "Close"
-            ipo_tag = row.find('td', attrs={'data-label': 'IPO'})
+            ipo_tag = row.find("td", attrs={"data-label": "IPO"})
             if ipo_tag:
                 # Find the <a> tag within this td to get the URL and name
-                ipo_link = ipo_tag.find('a')
+                ipo_link = ipo_tag.find("a")
                 if ipo_link:
-                    entry['ipo_url'] = ipo_link['href'] 
+                    entry["ipo_url"] = hostname + ipo_link["href"]
                     for span in ipo_link.find_all("span"):
                         span.decompose()
-                    entry['ipo_name'] = ipo_link.get_text(strip=True)
-            
-            est_listing_tag = row.find('td', attrs={'data-label': 'Est Listing'})
+                    entry["ipo_name"] = ipo_link.get_text(strip=True)
+
+            est_listing_tag = row.find("td", attrs={"data-label": "Est Listing"})
             if est_listing_tag:
-                entry['listing_gmp'] = est_listing_tag.text.strip()
-            
-            close_tag = row.find('td', attrs={'data-label': 'Close'})
+                entry["listing_gmp"] = est_listing_tag.text.strip()
+
+            close_tag = row.find("td", attrs={"data-label": "Close"})
             if close_tag:
-                entry['close_date'] = close_tag.text.strip()
+                entry["close_date"] = close_tag.text.strip()
 
             ipo_data.append(entry)
 
@@ -221,6 +226,68 @@ def fetch_ipo_data() -> dict:
         )
 
     return ipo_data
+
+
+def fetch_subscription_info(url: str) -> dict:
+    """
+    Fetches the subscription information for a given IPO from the
+    subscriptions page and returns the latest day's subscription data.
+
+    Args:
+        url (str): URL for IPO's subscription page
+
+    Returns:
+        dict: Subscription info (eg. {"RII": "34.2x"})
+    """
+
+    # Url changes for subscriptions page from the original scrape
+    url = url.replace("/gmp", "/subscription")
+
+    response = get(url)
+    html_content = response.text
+    soup = BeautifulSoup(html_content, "html.parser")
+    table = None
+
+    # The table has no real attribute to pinpoint it on page,
+    # so using the "caption" tag to find the table.
+    for caption in soup.find_all("caption"):
+        if caption.text.strip() == "IPO Bidding Live Updates from BSE + NSE":
+            table = caption.find_parent("table")
+            break
+
+    if not table:
+        LOGGER.error("Subscription table not found!")
+        return {"upcoming": "Upcoming IPO, Subscription not open!"}
+
+    # Get all rows within the table
+    rows = table.find_all("tr")
+
+    if not rows:
+        LOGGER.error("No rows found in the table")
+        return {"upcoming": "Upcoming IPO, Subscription not open!"}
+
+    # Only get the last row, for the latest subscription info.
+    last_row = rows[-1]
+
+    # Extract data-title attributes and their corresponding text from the last row
+    last_row_data = {}
+    cells = last_row.find_all("td")
+
+    # ignoring the first two columns (date and serial)
+    for cell in cells[2:]:
+        data_title = cell.get("data-title")
+        if data_title:
+            # Seperate institution and Date
+            pattern = r"(.*)-Day(\d+)"
+            institution = match(pattern, data_title)
+
+            if institution:
+                last_row_data["bidding_day"] = institution.group(2)
+                last_row_data[institution.group(1)] = cell.text.strip()
+
+    LOGGER.debug(f"Subscription Info for url: {url}")
+    LOGGER.debug("%s", last_row_data)
+    return last_row_data
 
 
 def filter_data(ipo_data: list) -> dict:
@@ -241,20 +308,28 @@ def filter_data(ipo_data: list) -> dict:
     for ipo in ipo_data:
         if ipo["ipo_name"] == "":
             # handle edge cases for non IPO rows
-            pass
-        if ipo['close'] == '':
+            continue
+        if ipo["close_date"] == "":
             LOGGER.debug(f"IPO close missing for {ipo['ipo_name']}, skipping!")
-            pass
-        if ipo['listing_gmp'] == '--':
+            continue
+        if ipo["listing_gmp"] == "--":
             LOGGER.debug(f"IPO gmp missing for {ipo['ipo_name']}, skipping!")
-            pass
-        
+            continue
+
         date_delta = get_date_delta(ipo["close_date"])
-        if date_delta and date_delta >= 0 and date_delta < days_before_deadline:
+
+        if date_delta and date_delta >=0 and date_delta <= days_before_deadline:
             if parse_gmp(ipo["listing_gmp"]) >= gmp_threshold:
+                # All checks pass, scrape the subscriptions page to fetch and add that info
+                ipo_subscription = fetch_subscription_info(ipo["ipo_url"])
+                ipo["ipo_subscription"] = ipo_subscription
                 filtered_list.append(ipo)
 
-    LOGGER.debug("Filtered List: \n", filtered_list)
+    if LOGGER.level == "DEBUG":
+        LOGGER.debug("Filtered List:")
+        for item in filtered_list:
+            LOGGER.debug(pformat(item))
+
     return filtered_list
 
 
@@ -273,11 +348,31 @@ def format_msg(msg: list) -> str:
     formatted_str = f"*IPO Alerts for the next {CLI_ARGS.days_before_close} days*\n\n"
 
     for line in msg:
-        formatted_str += f"‣ {line['ipo_name']}\n"
+        formatted_str += f"*‣ {line['ipo_name']}*\n"
         formatted_str += f"> GMP: *{line['listing_gmp']}*\n"
         formatted_str += f"> Closing On: *{line['close_date']}*\n"
-        formatted_str += f"> URL: *{line['ipo_url']}*\n"
-        formatted_str += "\n"
+        
+        if not line['ipo_subscription']['upcoming']:
+            formatted_str += (
+                f"Subscription Info *(Day {line['ipo_subscription']['bidding_day']})*:\n> "
+            )
+
+            for institution in line["ipo_subscription"].keys():
+                if institution == "bidding_day":
+                    continue
+
+                formatted_str += (
+                    f"*{institution}*: {line['ipo_subscription'][institution]}, "
+                )
+
+            formatted_str = formatted_str[:-2]
+
+        else:
+            formatted_str += (
+                f"Subscription Info:\n> {line['ipo_subscription']['upcoming']}"
+            )
+
+        formatted_str += "\n\n"
 
     return formatted_str
 
@@ -362,50 +457,6 @@ def send_message(msg: str) -> str:
     LOGGER.debug(response.text)
     return response.text
 
-def dummy():
-    url = 'https://www.investorgain.com/report/live-ipo-gmp/331/'
-
-    # Make a request to fetch the content of the page
-    response = get(url)
-    html_content = response.text
-
-    # Parse the page content using BeautifulSoup
-    soup = BeautifulSoup(html_content, 'html.parser')
-
-    # List to store IPO information
-    ipo_data = []
-
-    # Find all the table rows
-    rows = soup.find_all('tr')  # Assuming data is in table rows
-
-    # Loop through each row and fetch details for IPO, Est Listing, and Close
-    for row in rows:
-        ipo_info = {}
-        
-        ipo_tag = row.find('td', attrs={'data-label': 'IPO'})
-        if ipo_tag:
-            # Find the <a> tag within this td to get the URL and name
-            ipo_link = ipo_tag.find('a')
-            if ipo_link:
-                ipo_info['IPO URL'] = ipo_link['href']  # Extract URL
-                ipo_info['IPO Name'] = ipo_link.text.strip()  # Extract IPO name text
-        
-        # Get Est Listing text from 'td' tag with data-label='Est Listing'
-        est_listing_tag = row.find('td', attrs={'data-label': 'Est Listing'})
-        if est_listing_tag:
-            ipo_info['Est Listing'] = est_listing_tag.text.strip()
-        
-        # Get Close text from 'td' tag with data-label='Close'
-        close_tag = row.find('td', attrs={'data-label': 'Close'})
-        if close_tag:
-            ipo_info['Close'] = close_tag.text.strip()
-        
-        ipo_data.append(ipo_info)
-
-    # Print the extracted data
-    for data in ipo_data:
-        print(data)
-
 
 def main():
     __bootstrap()
@@ -415,12 +466,11 @@ def main():
     # initial_users = ["<Phone Numbers>"]
     # resp = create_group(initial_users)
     # LOGGER.info(resp)
-    # dummy()
 
     ipo_data = fetch_ipo_data()
-    print(ipo_data)
     ipo_alerts_data = filter_data(ipo_data)
     message = format_msg(ipo_alerts_data)
+
     if message:
         LOGGER.info(message)
     else:
