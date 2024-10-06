@@ -318,7 +318,7 @@ def filter_data(ipo_data: list) -> dict:
 
         date_delta = get_date_delta(ipo["close_date"])
 
-        if date_delta and date_delta >= 0 and date_delta <= days_before_deadline:
+        if date_delta and date_delta >= 0 and date_delta < days_before_deadline:
             if parse_gmp(ipo["listing_gmp"]) >= gmp_threshold:
                 # All checks pass, scrape the subscriptions page to fetch and add that info
                 ipo_subscription = fetch_subscription_info(ipo["ipo_url"])
