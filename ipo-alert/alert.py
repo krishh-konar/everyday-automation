@@ -103,6 +103,14 @@ def __cli() -> ArgumentParser:
         help="GMP threshold value; percentage above which to return IPOs.",
     )
     parser.add_argument(
+        "-b",
+        "--fallback-threshold",
+        type=float,
+        default=None,
+        help="Fallback GMP threshold value; comes into place in case filtered" + \
+            "list has < 2 IPOs percentage above which to return IPOs.",
+    )
+    parser.add_argument(
         "-f",
         "--file-path",
         type=str,
@@ -291,21 +299,59 @@ def fetch_subscription_info(url: str) -> dict:
     return last_row_data
 
 
-def filter_data(ipo_data: list) -> dict:
+def get_filtered_list(ipo_data: list) -> tuple[list[dict], bool]:
     """
-    Filter out IPOs matching the filtering criteria provided via CLI
+    Filter out IPOs matching the filtering criteria provided via CLI.
+    Uses `filter_data()` to filter out IPOs. Initiates additional call
+    to this function with fallback in case there are not enough IPOs.
 
     Args:
-        cli_args (ArgumentParser): CLI args
-        ipo_data (dict): All available IPOs data
+        ipo_data (dict): List of all IPOs
 
     Returns:
-        dict: filtered IPOs
+        tuple[list[dict], bool]: filtered IPOs and whether the 
+            fallback IPOs are included.
     """
-    filtered_list = []
+    filtered_list = None
     gmp_threshold = CLI_ARGS.alert_threshold
     days_before_deadline = CLI_ARGS.days_before_close
+    has_fallback_ipos = False
 
+    filtered_list = filter_data(ipo_data, days_before_deadline, gmp_threshold)
+
+    if len(filtered_list) < 2 and CLI_ARGS.fallback_threshold:
+        # not enough IPOs and fallback is set to true, find more IPOs
+        LOGGER.info(
+            "Did not find enough IPOs and fallback is set, running with lower threshold."
+        )
+        has_fallback_ipos = True
+        filtered_list = filter_data(
+            ipo_data, days_before_deadline, CLI_ARGS.fallback_threshold
+        )
+
+    if LOGGER.level == "DEBUG":
+        LOGGER.debug("Filtered List:")
+        for item in filtered_list:
+            LOGGER.debug(pformat(item))
+
+    return (filtered_list, has_fallback_ipos)
+
+
+def filter_data(
+    ipo_data: list, days_before_deadline: int, threshold: float
+) -> list[dict]:
+    """
+    Filter dictionaries matching given criteria
+
+    Args:
+        ipo_data (list): List of all IPOs
+        days_before_deadline (int): Number of days before the IPO application closes
+        threshold (float): GMP threshold value, percentage above which to return IPOs.
+
+    Returns:
+        list[dict]: filtered list of IPOs
+    """
+    filtered_list = []
     for ipo in ipo_data:
         if ipo["ipo_name"] == "":
             # handle edge cases for non IPO rows
@@ -318,27 +364,23 @@ def filter_data(ipo_data: list) -> dict:
             continue
 
         date_delta = get_date_delta(ipo["close_date"])
-
         if date_delta and date_delta >= 0 and date_delta < days_before_deadline:
-            if parse_gmp(ipo["listing_gmp"]) >= gmp_threshold:
-                # All checks pass, scrape the subscriptions page to fetch and add that info
+            if parse_gmp(ipo["listing_gmp"]) >= threshold:
+                # All checks pass, scrape the subscriptions page to fetch 
+                # and add that information in ipo dict
                 ipo_subscription = fetch_subscription_info(ipo["ipo_url"])
                 ipo["ipo_subscription"] = ipo_subscription
                 filtered_list.append(ipo)
 
-    if LOGGER.level == "DEBUG":
-        LOGGER.debug("Filtered List:")
-        for item in filtered_list:
-            LOGGER.debug(pformat(item))
-
     return filtered_list
 
 
-def format_msg(msg: list) -> str:
+def format_msg(msg: list, has_fallback_ipos: bool) -> str:
     """Format the message to be sent to whatsapp from list of IPOs
 
     Args:
         msg (list): List of IPOs
+        has_fallback_ipos (bool): IPO list contains fallback IPOs
 
     Returns:
         str: Whatsapp message to be sent
@@ -347,6 +389,10 @@ def format_msg(msg: list) -> str:
         return ""
 
     formatted_str = f"*IPO Alerts for the next {CLI_ARGS.days_before_close} days*\n\n"
+
+    if has_fallback_ipos:
+        formatted_str += "*Attention*: Did not find enough IPOs and fallback is set, " + \
+            f"showing IPOs with *lower GMPs of > {CLI_ARGS.fallback_threshold}%*.\n\n"
 
     for line in msg:
         formatted_str += f"*‣ {line['ipo_name']}*\n"
@@ -467,8 +513,8 @@ def main():
     # LOGGER.info(resp)
 
     ipo_data = fetch_ipo_data()
-    ipo_alerts_data = filter_data(ipo_data)
-    message = format_msg(ipo_alerts_data)
+    ipo_alerts_data, has_fallback_ipos = get_filtered_list(ipo_data)
+    message = format_msg(ipo_alerts_data, has_fallback_ipos)
 
     if message:
         LOGGER.info(message)
