@@ -260,7 +260,7 @@ def fetch_subscription_info(url: str) -> dict:
     # The table has no real attribute to pinpoint it on page,
     # so using the "caption" tag to find the table.
     for caption in soup.find_all("caption"):
-        if caption.text.strip() == "IPO Bidding Live Updates from BSE + NSE":
+        if caption.text.strip().startswith("IPO Bidding Live Updates"):
             table = caption.find_parent("table")
             break
 
@@ -364,7 +364,7 @@ def filter_data(
             continue
 
         date_delta = get_date_delta(ipo["close_date"])
-        if date_delta and date_delta >= 0 and date_delta < days_before_deadline:
+        if date_delta >= 0 and date_delta < days_before_deadline:
             if parse_gmp(ipo["listing_gmp"]) >= threshold:
                 # All checks pass, scrape the subscriptions page to fetch 
                 # and add that information in ipo dict
@@ -399,7 +399,7 @@ def format_msg(msg: list, has_fallback_ipos: bool) -> str:
         formatted_str += f"> GMP: *{line['listing_gmp']}*\n"
         formatted_str += f"> Closing On: *{line['close_date']}*\n"
 
-        if not line["ipo_subscription"]["upcoming"]:
+        if "upcoming" not in line["ipo_subscription"].keys():
             formatted_str += f"Subscription Info *(Day {line['ipo_subscription']['bidding_day']})*:\n> "
 
             for institution in line["ipo_subscription"].keys():
