@@ -1,0 +1,26 @@
+name: Test IPO Alerts Cron
+on:
+  workflow_dispatch:
+
+jobs:
+  ipo-cron:
+    name: IPO Alerts Daily Cron
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: test/ipo-cron
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install dependencies
+        run: |
+          python -m pip install -r ipo-alert/requirements.txt
+      - name: Run IPO Alert script
+        env:
+          WHAPI_TOKEN: ${{ secrets.WHAPI_TOKEN }}
+          WHAPI_GROUP_ID: ${{ secrets.WHAPI_GROUP_ID }}
+          WHAPI_API_URL: ${{ vars.WHAPI_API_URL }}
+          GMP_BASE_URL: ${{ vars.GMP_BASE_URL }}
+        run: |
+          python ipo-alert/alert.py -d 3 -t 30 --fallback-threshold 20 --github-secrets --dry-run  --log-level DEBUG

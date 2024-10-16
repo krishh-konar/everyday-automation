@@ -1,4 +1,5 @@
 from requests import get, post
+from requests.exceptions import HTTPError
 from argparse import ArgumentParser
 from bs4 import BeautifulSoup
 from datetime import datetime
@@ -193,8 +194,13 @@ def fetch_ipo_data() -> dict:
     Returns:
         dict: IPO data
     """
-    response = get(url=CONFIG["MAIN"]["GMP_BASE_URL"])
-
+    try:
+        response = get(url=CONFIG["MAIN"]["GMP_BASE_URL"])
+    except HTTPError as e:
+        LOGGER.error("Error fetching main site!")
+        LOGGER.error(e)
+        exit -2
+    
     # the urls we get are relavtive urls, will need to append the hostname
     base_url = urlparse(CONFIG["MAIN"]["GMP_BASE_URL"])
     hostname = f"{base_url.scheme}://{base_url.netloc}"
@@ -252,7 +258,13 @@ def fetch_subscription_info(url: str) -> dict:
     # Url changes for subscriptions page from the original scrape
     url = url.replace("/gmp", "/subscription")
 
-    response = get(url)
+    try:
+        response = get(url)
+    except HTTPError as e:
+        LOGGER.error("Error fetching subscription info for %s", url)
+        LOGGER.error(e)
+        return {}
+
     html_content = response.text
     soup = BeautifulSoup(html_content, "html.parser")
     table = None
