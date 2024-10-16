@@ -108,8 +108,8 @@ def __cli() -> ArgumentParser:
         "--fallback-threshold",
         type=float,
         default=None,
-        help="Fallback GMP threshold value; comes into place in case filtered" + \
-            "list has < 2 IPOs percentage above which to return IPOs.",
+        help="Fallback GMP threshold value; comes into place in case filtered"
+        + "list has < 2 IPOs percentage above which to return IPOs.",
     )
     parser.add_argument(
         "-f",
@@ -195,7 +195,10 @@ def fetch_ipo_data() -> dict:
         dict: IPO data
     """
     try:
-        response = get(url=CONFIG["MAIN"]["GMP_BASE_URL"])
+        headers = {
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36"
+        }
+        response = get(url=CONFIG["MAIN"]["GMP_BASE_URL"], headers=headers)
         if response.status_code != 200:
             LOGGER.debug(response.text)
             LOGGER.debug(response.content)
@@ -203,8 +206,8 @@ def fetch_ipo_data() -> dict:
     except HTTPError as e:
         LOGGER.error("Error fetching main site!")
         LOGGER.error(e)
-        exit -2
-    
+        exit - 2
+
     # the urls we get are relavtive urls, will need to append the hostname
     base_url = urlparse(CONFIG["MAIN"]["GMP_BASE_URL"])
     hostname = f"{base_url.scheme}://{base_url.netloc}"
@@ -325,7 +328,7 @@ def get_filtered_list(ipo_data: list) -> tuple[list[dict], bool]:
         ipo_data (dict): List of all IPOs
 
     Returns:
-        tuple[list[dict], bool]: filtered IPOs and whether the 
+        tuple[list[dict], bool]: filtered IPOs and whether the
             fallback IPOs are included.
     """
     filtered_list = None
@@ -382,7 +385,7 @@ def filter_data(
         date_delta = get_date_delta(ipo["close_date"])
         if date_delta >= 0 and date_delta < days_before_deadline:
             if parse_gmp(ipo["listing_gmp"]) >= threshold:
-                # All checks pass, scrape the subscriptions page to fetch 
+                # All checks pass, scrape the subscriptions page to fetch
                 # and add that information in ipo dict
                 ipo_subscription = fetch_subscription_info(ipo["ipo_url"])
                 ipo["ipo_subscription"] = ipo_subscription
@@ -407,8 +410,10 @@ def format_msg(msg: list, has_fallback_ipos: bool) -> str:
     formatted_str = f"*IPO Alerts for the next {CLI_ARGS.days_before_close} days*\n\n"
 
     if has_fallback_ipos:
-        formatted_str += "*Attention*: Did not find enough IPOs and fallback is set, " + \
-            f"showing IPOs with *lower GMPs of > {CLI_ARGS.fallback_threshold}%*.\n\n"
+        formatted_str += (
+            "*Attention*: Did not find enough IPOs and fallback is set, "
+            + f"showing IPOs with *lower GMPs of > {CLI_ARGS.fallback_threshold}%*.\n\n"
+        )
 
     for line in msg:
         formatted_str += f"*‣ {line['ipo_name']}*\n"
