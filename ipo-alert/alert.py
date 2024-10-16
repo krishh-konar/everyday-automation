@@ -198,9 +198,13 @@ def fetch_ipo_data() -> dict:
         headers = {
             "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36",
             "Cache-Control": "no-cache",
-            "Cookie": "_ga_RGRD0KBG0H=GS1.1.1729120597.1.0.1729120597.0.0.0; _ga=GA1.2.1559669621.1729120597; _gid=GA1.2.167433811.1729120597; _gat=1; cf_clearance=G.nTiuXnhYm9GEZVI5Ih.R1EKToTxFDK3R7JyMzgr6c-1729120597-1.2.1.1-h0x1cgwg_7_YkE6YdRZ.RCNQLYaKT5RuekR3BgX9FCuwD6OgcCdEuKyPQfF3yEtRIFq1e22bKB3z3yTGQJqyu2JYguGcYWBM0apaH0xMEDKwB7xNWaiKlmdWHUH7CX2aZ4ybtfkKvupaZmhTojiNT.bFxb13GAESjOqrJ9ivZeOIIyvmc2ywNQTPX0eAhEIjfBTxduEo1jpfaDCwgEVfLYvJNOSMw6AhsOxB1GJzzS8OMm.E_6XX9vG45YVTVWxO5VRC2nhkAV0G7dJoR.tEb5h.dOvWVVbq4Dh9puz1DqqW1lQqS.R2eWtV8bIWALRYfoSxwDHO1oZPB1a8spGEeEcyli4prXQ4dHr.Mh6ruPk3hfmbNJTlsZpsVE0J9.D3"
+            # "Cookie": "_ga_RGRD0KBG0H=GS1.1.1729120597.1.0.1729120597.0.0.0; _ga=GA1.2.1559669621.1729120597; _gid=GA1.2.167433811.1729120597; _gat=1; cf_clearance=G.nTiuXnhYm9GEZVI5Ih.R1EKToTxFDK3R7JyMzgr6c-1729120597-1.2.1.1-h0x1cgwg_7_YkE6YdRZ.RCNQLYaKT5RuekR3BgX9FCuwD6OgcCdEuKyPQfF3yEtRIFq1e22bKB3z3yTGQJqyu2JYguGcYWBM0apaH0xMEDKwB7xNWaiKlmdWHUH7CX2aZ4ybtfkKvupaZmhTojiNT.bFxb13GAESjOqrJ9ivZeOIIyvmc2ywNQTPX0eAhEIjfBTxduEo1jpfaDCwgEVfLYvJNOSMw6AhsOxB1GJzzS8OMm.E_6XX9vG45YVTVWxO5VRC2nhkAV0G7dJoR.tEb5h.dOvWVVbq4Dh9puz1DqqW1lQqS.R2eWtV8bIWALRYfoSxwDHO1oZPB1a8spGEeEcyli4prXQ4dHr.Mh6ruPk3hfmbNJTlsZpsVE0J9.D3"
         }
-        response = get(url=CONFIG["MAIN"]["GMP_BASE_URL"], headers=headers)
+        proxies = { 
+            "http"  : "http://45.202.198.16:3128"
+            }
+
+        response = get(url=CONFIG["MAIN"]["GMP_BASE_URL"], headers=headers, proxies=proxies)
         if response.status_code != 200:
             LOGGER.debug(response.text)
             LOGGER.debug(response.content)
