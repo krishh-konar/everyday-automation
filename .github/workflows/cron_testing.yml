@@ -7,6 +7,8 @@ jobs:
     name: IPO Alerts Daily Cron
     runs-on: ubuntu-latest
     steps:
+      - name: Sanity Check
+        run: curl -v https://www.investorgain.com/report/live-ipo-gmp/331/
       - uses: actions/checkout@v4
         with:
           ref: test/ipo-cron
