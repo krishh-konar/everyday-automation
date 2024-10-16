@@ -196,6 +196,10 @@ def fetch_ipo_data() -> dict:
     """
     try:
         response = get(url=CONFIG["MAIN"]["GMP_BASE_URL"])
+        if response.status_code != 200:
+            LOGGER.debug(response.text)
+            LOGGER.debug(response.content)
+            LOGGER.debug(response.reason)
     except HTTPError as e:
         LOGGER.error("Error fetching main site!")
         LOGGER.error(e)
