@@ -159,7 +159,7 @@ def get_date_delta(date_str: str) -> int:
     date_format = "%d-%b-%Y"
 
     try:
-        current_date = datetime.now()
+        current_date = datetime.now().replace(second=0, hour=0, minute=0, microsecond=0)
         close_date = datetime.strptime(f"{date_str}-{current_date.year}", date_format)
 
         diff = close_date - current_date
