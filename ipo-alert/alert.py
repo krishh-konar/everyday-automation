@@ -108,8 +108,8 @@ def __cli() -> ArgumentParser:
         "--fallback-threshold",
         type=float,
         default=None,
-        help="Fallback GMP threshold value; comes into place in case filtered" + \
-            "list has < 2 IPOs percentage above which to return IPOs.",
+        help="Fallback GMP threshold value; comes into place in case filtered"
+        + "list has < 2 IPOs percentage above which to return IPOs.",
     )
     parser.add_argument(
         "-f",
@@ -199,8 +199,8 @@ def fetch_ipo_data() -> dict:
     except HTTPError as e:
         LOGGER.error("Error fetching main site!")
         LOGGER.error(e)
-        exit -2
-    
+        exit(-2)
+
     # the urls we get are relavtive urls, will need to append the hostname
     base_url = urlparse(CONFIG["MAIN"]["GMP_BASE_URL"])
     hostname = f"{base_url.scheme}://{base_url.netloc}"
@@ -232,6 +232,10 @@ def fetch_ipo_data() -> dict:
             close_tag = row.find("td", attrs={"data-label": "Close"})
             if close_tag:
                 entry["close_date"] = close_tag.text.strip()
+            if " sme" in entry["ipo_name"].lower():
+                entry["type"] = "sme"
+            else:
+                entry["type"] = "mainboard"
 
             ipo_data.append(entry)
 
@@ -321,7 +325,7 @@ def get_filtered_list(ipo_data: list) -> tuple[list[dict], bool]:
         ipo_data (dict): List of all IPOs
 
     Returns:
-        tuple[list[dict], bool]: filtered IPOs and whether the 
+        tuple[list[dict], bool]: filtered IPOs and whether the
             fallback IPOs are included.
     """
     filtered_list = None
@@ -378,7 +382,7 @@ def filter_data(
         date_delta = get_date_delta(ipo["close_date"])
         if date_delta >= 0 and date_delta < days_before_deadline:
             if parse_gmp(ipo["listing_gmp"]) >= threshold:
-                # All checks pass, scrape the subscriptions page to fetch 
+                # All checks pass, scrape the subscriptions page to fetch
                 # and add that information in ipo dict
                 ipo_subscription = fetch_subscription_info(ipo["ipo_url"])
                 ipo["ipo_subscription"] = ipo_subscription
@@ -403,33 +407,43 @@ def format_msg(msg: list, has_fallback_ipos: bool) -> str:
     formatted_str = f"*IPO Alerts for the next {CLI_ARGS.days_before_close} days*\n\n"
 
     if has_fallback_ipos:
-        formatted_str += "*Attention*: Did not find enough IPOs and fallback is set, " + \
-            f"showing IPOs with *lower GMPs of > {CLI_ARGS.fallback_threshold}%*.\n\n"
+        formatted_str += (
+            "*Attention*: Did not find enough IPOs and fallback is set, "
+            + f"showing IPOs with *lower GMPs of > {CLI_ARGS.fallback_threshold}%*.\n\n"
+        )
 
-    for line in msg:
-        formatted_str += f"*‣ {line['ipo_name']}*\n"
-        formatted_str += f"> GMP: *{line['listing_gmp']}*\n"
-        formatted_str += f"> Closing On: *{line['close_date']}*\n"
+    for ipo_type in ["mainboard", "sme"]:
+        ipo_type_header = f"*{ipo_type.upper()} IPOs:*\n"
 
-        if "upcoming" not in line["ipo_subscription"].keys():
-            formatted_str += f"Subscription Info *(Day {line['ipo_subscription']['bidding_day']})*:\n> "
+        formatted_str += ipo_type_header
+        formatted_str += "-" * len(ipo_type_header) + "\n\n"
+        for line in msg:
+            if line["type"] is not ipo_type:
+                continue
 
-            for institution in line["ipo_subscription"].keys():
-                if institution == "bidding_day":
-                    continue
+            formatted_str += f"*‣ {line['ipo_name']}*\n"
+            formatted_str += f"> GMP: *{line['listing_gmp']}*\n"
+            formatted_str += f"> Closing On: *{line['close_date']}*\n"
 
+            if "upcoming" not in line["ipo_subscription"].keys():
+                formatted_str += f"Subscription Info *(Day {line['ipo_subscription']['bidding_day']})*:\n> "
+
+                for institution in line["ipo_subscription"].keys():
+                    if institution == "bidding_day":
+                        continue
+
+                    formatted_str += (
+                        f"*{institution}*: {line['ipo_subscription'][institution]}, "
+                    )
+
+                formatted_str = formatted_str[:-2]
+
+            else:
                 formatted_str += (
-                    f"*{institution}*: {line['ipo_subscription'][institution]}, "
+                    f"Subscription Info:\n> {line['ipo_subscription']['upcoming']}"
                 )
 
-            formatted_str = formatted_str[:-2]
-
-        else:
-            formatted_str += (
-                f"Subscription Info:\n> {line['ipo_subscription']['upcoming']}"
-            )
-
-        formatted_str += "\n\n"
+            formatted_str += "\n\n"
 
     return formatted_str
 
