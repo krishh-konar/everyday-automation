@@ -315,6 +315,46 @@ def fetch_subscription_info(url: str) -> dict:
     return last_row_data
 
 
+def extract_info(url: str) -> dict:
+    """
+    Fetches additional information for a given IPO from the
+    IPO home page and returns the IPO's lot size and amount.
+
+    Args:
+        url (str): URL for IPO's subscription page
+
+    Returns:
+        dict: Additional Info about the IPO
+    """
+    try:
+        url = url.replace("/gmp", "/ipo")
+        response = get(url)
+    except HTTPError as e:
+        LOGGER.error("Error fetching additional ipo info for %s", url)
+        LOGGER.error(e)
+        return {}
+
+    soup = BeautifulSoup(response.content, "html.parser")
+    table_data = {}
+    rows = soup.find_all("tr")
+
+    for row in rows:
+        columns = row.find_all("td")
+        if len(columns) == 2:  # Check if the row has two columns
+            key = columns[0].text.strip()
+            value = columns[1].text.strip()
+            if "Issue Price" in key:
+                table_data["issue_price"] = value
+            elif "1 Lot Amount" in key:
+                table_data["lot_amount"] = value
+            elif "Market Lot" in key:
+                table_data["lot_size"] = value
+            elif "IPO Issue Size" in key:
+                table_data["issue_size"] = value
+
+    return table_data
+
+
 def get_filtered_list(ipo_data: list) -> tuple[list[dict], bool]:
     """
     Filter out IPOs matching the filtering criteria provided via CLI.
@@ -384,8 +424,8 @@ def filter_data(
             if parse_gmp(ipo["listing_gmp"]) >= threshold:
                 # All checks pass, scrape the subscriptions page to fetch
                 # and add that information in ipo dict
-                ipo_subscription = fetch_subscription_info(ipo["ipo_url"])
-                ipo["ipo_subscription"] = ipo_subscription
+                ipo["ipo_subscription"] = fetch_subscription_info(ipo["ipo_url"])
+                ipo["ipo_info"] = extract_info(ipo["ipo_url"])
                 filtered_list.append(ipo)
 
     return filtered_list
@@ -413,16 +453,21 @@ def format_msg(msg: list, has_fallback_ipos: bool) -> str:
         )
 
     for ipo_type in ["mainboard", "sme"]:
-        ipo_type_header = f"*{ipo_type.upper()} IPOs:*\n"
+        if any(entry["type"] == ipo_type for entry in msg):
+            ipo_type_header = f"*{ipo_type.upper()} IPOs:*\n"
+            formatted_str += ipo_type_header
+            formatted_str += "-" * len(ipo_type_header) + "\n\n"
 
-        formatted_str += ipo_type_header
-        formatted_str += "-" * len(ipo_type_header) + "\n\n"
         for line in msg:
             if line["type"] is not ipo_type:
                 continue
 
             formatted_str += f"*‣ {line['ipo_name']}*\n"
             formatted_str += f"> GMP: *{line['listing_gmp']}*\n"
+            formatted_str += f"> Issue Size: *{line['ipo_info']['issue_size']}*\n"
+            formatted_str += f"> Issue Price: *{line['ipo_info']['issue_price']}*\n"
+            formatted_str += f"> Lot Size: *{line['ipo_info']['lot_size']}*\n"
+            formatted_str += f"> Lot Amount: *{line['ipo_info']['lot_amount']}*\n"
             formatted_str += f"> Closing On: *{line['close_date']}*\n"
 
             if "upcoming" not in line["ipo_subscription"].keys():
