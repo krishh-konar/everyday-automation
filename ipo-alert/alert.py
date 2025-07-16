@@ -188,6 +188,65 @@ def parse_gmp(gmp_str: str) -> float:
         raise ValueError("Percentage not found in the string")
 
 
+# def fetch_ipo_data() -> dict:
+#     """Call IPO GMP page and parse IPO related data.
+
+#     Returns:
+#         dict: IPO data
+#     """
+#     try:
+#         response = get(url=CONFIG["MAIN"]["GMP_BASE_URL"])
+#     except HTTPError as e:
+#         LOGGER.error("Error fetching main site!")
+#         LOGGER.error(e)
+#         exit(-2)
+
+#     # the urls we get are relavtive urls, will need to append the hostname
+#     base_url = urlparse(CONFIG["MAIN"]["GMP_BASE_URL"])
+#     hostname = f"{base_url.scheme}://{base_url.netloc}"
+
+#     if response.status_code == 200:
+#         soup = BeautifulSoup(response.text, "html.parser")
+#         ipo_data = []
+
+#         rows = soup.find_all("tr")  # scan all rows
+
+#         for row in rows:
+#             entry = defaultdict(str)
+
+#             # Data present in elements with data-label="IPO", "Est Listing", and "Close"
+#             ipo_tag = row.find("td", attrs={"data-label": "IPO"})
+#             if ipo_tag:
+#                 # Find the <a> tag within this td to get the URL and name
+#                 ipo_link = ipo_tag.find("a")
+#                 if ipo_link:
+#                     entry["ipo_url"] = hostname + ipo_link["href"]
+#                     for span in ipo_link.find_all("span"):
+#                         span.decompose()
+#                     entry["ipo_name"] = ipo_link.get_text(strip=True)
+
+#             est_listing_tag = row.find("td", attrs={"data-label": "Est Listing"})
+#             if est_listing_tag:
+#                 entry["listing_gmp"] = est_listing_tag.text.strip()
+
+#             close_tag = row.find("td", attrs={"data-label": "Close"})
+#             if close_tag:
+#                 entry["close_date"] = close_tag.text.strip()
+#             if " sme" in entry["ipo_name"].lower():
+#                 entry["type"] = "sme"
+#             else:
+#                 entry["type"] = "mainboard"
+
+#             ipo_data.append(entry)
+
+#     else:
+#         LOGGER.error(
+#             "Failed to retrieve the page. Status code: %s", response.status_code
+#         )
+
+#     return ipo_data
+
+
 def fetch_ipo_data() -> dict:
     """Call IPO GMP page and parse IPO related data.
 
@@ -195,56 +254,46 @@ def fetch_ipo_data() -> dict:
         dict: IPO data
     """
     try:
-        response = get(url=CONFIG["MAIN"]["GMP_BASE_URL"])
+        response = get(url="https://webnodejs.investorgain.com/cloud/report/data-read/331/1/7/2025/2025-26/0/all?search=&v=03-49")
     except HTTPError as e:
         LOGGER.error("Error fetching main site!")
         LOGGER.error(e)
         exit(-2)
 
-    # the urls we get are relavtive urls, will need to append the hostname
+    ipo_data = []
     base_url = urlparse(CONFIG["MAIN"]["GMP_BASE_URL"])
     hostname = f"{base_url.scheme}://{base_url.netloc}"
 
-    if response.status_code == 200:
-        soup = BeautifulSoup(response.text, "html.parser")
-        ipo_data = []
+    raw_data = response.json()["reportTableData"]
+    for row in raw_data:
+        entry = defaultdict(str)
 
-        rows = soup.find_all("tr")  # scan all rows
+        if "SME" in row["~IPO_Category"].lower():
+            entry["type"] = "sme"
+        else:
+            entry["type"] = "mainboard"
 
-        for row in rows:
-            entry = defaultdict(str)
+        # Extract the Name from the "title" attribute within the "~IPO_Name" field
+        name_match = search(r'title="([^"]+)"', row["Name"])
+        if name_match:
+            entry["ipo_name"] = name_match.group(1).replace("IPO", "").strip()
+        else:
+            entry["ipo_name"] = row["Name"].replace("IPO", "").strip()
 
-            # Data present in elements with data-label="IPO", "Est Listing", and "Close"
-            ipo_tag = row.find("td", attrs={"data-label": "IPO"})
-            if ipo_tag:
-                # Find the <a> tag within this td to get the URL and name
-                ipo_link = ipo_tag.find("a")
-                if ipo_link:
-                    entry["ipo_url"] = hostname + ipo_link["href"]
-                    for span in ipo_link.find_all("span"):
-                        span.decompose()
-                    entry["ipo_name"] = ipo_link.get_text(strip=True)
+        # Extract GMP percentage value from the "~IPO_Name" field
+        gmp_match = search(r"\((\d+\.\d+)%\)", row["Est Listing"])
+        if gmp_match:
+            entry["listing_gmp"] = float(gmp_match.group(1))
+        else:
+            entry["listing_gmp"] = None
 
-            est_listing_tag = row.find("td", attrs={"data-label": "Est Listing"})
-            if est_listing_tag:
-                entry["listing_gmp"] = est_listing_tag.text.strip()
+        entry["close_date"] = row["Close"].strip()
+        entry["ipo_url"] = hostname + row["~urlrewrite_folder_name"]
+        ipo_data.append(entry)
 
-            close_tag = row.find("td", attrs={"data-label": "Close"})
-            if close_tag:
-                entry["close_date"] = close_tag.text.strip()
-            if " sme" in entry["ipo_name"].lower():
-                entry["type"] = "sme"
-            else:
-                entry["type"] = "mainboard"
-
-            ipo_data.append(entry)
-
-    else:
-        LOGGER.error(
-            "Failed to retrieve the page. Status code: %s", response.status_code
-        )
-
+    print(ipo_data)
     return ipo_data
+    
 
 
 def fetch_subscription_info(url: str) -> dict:
@@ -343,6 +392,7 @@ def extract_info(url: str) -> dict:
         if len(columns) == 2:  # Check if the row has two columns
             key = columns[0].text.strip()
             value = columns[1].text.strip()
+            print(f"Key: {key}, Value: {value}")
             if "Issue Price" in key:
                 table_data["issue_price"] = value
             elif "1 Lot Amount" in key:
@@ -351,6 +401,8 @@ def extract_info(url: str) -> dict:
                 table_data["lot_size"] = value
             elif "IPO Issue Size" in key:
                 table_data["issue_size"] = value
+            elif "Individual Investor" in key:
+                table_data["lot_amount"] = value
 
     return table_data
 
@@ -421,13 +473,15 @@ def filter_data(
 
         date_delta = get_date_delta(ipo["close_date"])
         if date_delta >= 0 and date_delta < days_before_deadline:
-            if parse_gmp(ipo["listing_gmp"]) >= threshold:
+            # if parse_gmp(ipo["listing_gmp"]) >= threshold:
+            if ipo["listing_gmp"] >= threshold:
                 # All checks pass, scrape the subscriptions page to fetch
                 # and add that information in ipo dict
                 ipo["ipo_subscription"] = fetch_subscription_info(ipo["ipo_url"])
                 ipo["ipo_info"] = extract_info(ipo["ipo_url"])
                 filtered_list.append(ipo)
 
+    print(f"Filtered IPOs: {filtered_list}")
     return filtered_list
 
 
