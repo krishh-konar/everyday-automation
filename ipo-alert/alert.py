@@ -296,6 +296,75 @@ def fetch_ipo_data() -> dict:
     
 
 
+# def fetch_subscription_info(url: str) -> dict:
+#     """
+#     Fetches the subscription information for a given IPO from the
+#     subscriptions page and returns the latest day's subscription data.
+
+#     Args:
+#         url (str): URL for IPO's subscription page
+
+#     Returns:
+#         dict: Subscription info (eg. {"RII": "34.2x"})
+#     """
+
+#     # Url changes for subscriptions page from the original scrape
+#     # url = url.replace("/gmp", "/subscription")
+#     url_root = "https://webnodejs.investorgain.com/cloud/ipo/ipo-subscription-read/"
+#     url = url_root + url.split("/")[-1] 
+
+#     try:
+#         response = get(url)
+#     except HTTPError as e:
+#         LOGGER.error("Error fetching subscription info for %s", url)
+#         LOGGER.error(e)
+#         return {}
+
+#     html_content = response.text
+#     soup = BeautifulSoup(html_content, "html.parser")
+#     table = None
+
+#     # The table has no real attribute to pinpoint it on page,
+#     # so using the "caption" tag to find the table.
+#     for caption in soup.find_all("caption"):
+#         if caption.text.strip().startswith("IPO Bidding Live Updates"):
+#             table = caption.find_parent("table")
+#             break
+
+#     if not table:
+#         LOGGER.error("Subscription table not found!")
+#         return {"upcoming": "Upcoming IPO, Subscription not open!"}
+
+#     # Get all rows within the table
+#     rows = table.find_all("tr")
+
+#     if not rows:
+#         LOGGER.error("No rows found in the table")
+#         return {"upcoming": "Upcoming IPO, Subscription not open!"}
+
+#     # Only get the last row, for the latest subscription info.
+#     last_row = rows[-1]
+
+#     # Extract data-title attributes and their corresponding text from the last row
+#     last_row_data = {}
+#     cells = last_row.find_all("td")
+
+#     # ignoring the first two columns (date and serial)
+#     for cell in cells[2:]:
+#         data_title = cell.get("data-title")
+#         if data_title:
+#             # Seperate institution and Date
+#             pattern = r"(.*)-Day(\d+)"
+#             institution = match(pattern, data_title)
+
+#             if institution:
+#                 last_row_data["bidding_day"] = institution.group(2)
+#                 last_row_data[institution.group(1)] = cell.text.strip()
+
+#     LOGGER.debug("Subscription Info for url: %s", url)
+#     LOGGER.debug("%s", last_row_data)
+#     return last_row_data
+
 def fetch_subscription_info(url: str) -> dict:
     """
     Fetches the subscription information for a given IPO from the
@@ -309,7 +378,10 @@ def fetch_subscription_info(url: str) -> dict:
     """
 
     # Url changes for subscriptions page from the original scrape
-    url = url.replace("/gmp", "/subscription")
+    # url = url.replace("/gmp", "/subscription")
+    url_root = "https://webnodejs.investorgain.com/cloud/ipo/ipo-subscription-read/"
+    url = url_root + url.split("/")[-2] 
+    LOGGER.debug("Fetching subscription info from %s", url)
 
     try:
         response = get(url)
@@ -318,50 +390,24 @@ def fetch_subscription_info(url: str) -> dict:
         LOGGER.error(e)
         return {}
 
-    html_content = response.text
-    soup = BeautifulSoup(html_content, "html.parser")
-    table = None
+    # print(response.json())
+    data = response.json()["data"]["ipoBiddingData"][-1]
 
-    # The table has no real attribute to pinpoint it on page,
-    # so using the "caption" tag to find the table.
-    for caption in soup.find_all("caption"):
-        if caption.text.strip().startswith("IPO Bidding Live Updates"):
-            table = caption.find_parent("table")
-            break
-
-    if not table:
+    if len(data) == 0:
         LOGGER.error("Subscription table not found!")
         return {"upcoming": "Upcoming IPO, Subscription not open!"}
 
-    # Get all rows within the table
-    rows = table.find_all("tr")
-
-    if not rows:
-        LOGGER.error("No rows found in the table")
-        return {"upcoming": "Upcoming IPO, Subscription not open!"}
-
-    # Only get the last row, for the latest subscription info.
-    last_row = rows[-1]
-
-    # Extract data-title attributes and their corresponding text from the last row
-    last_row_data = {}
-    cells = last_row.find_all("td")
-
-    # ignoring the first two columns (date and serial)
-    for cell in cells[2:]:
-        data_title = cell.get("data-title")
-        if data_title:
-            # Seperate institution and Date
-            pattern = r"(.*)-Day(\d+)"
-            institution = match(pattern, data_title)
-
-            if institution:
-                last_row_data["bidding_day"] = institution.group(2)
-                last_row_data[institution.group(1)] = cell.text.strip()
+    resp = dict()
+    resp["bidding_day"] = str(len(data))
+    resp["RII"] = f"{data['rii']}x"
+    resp["NII"] = f"{data['nii']}x"
+    resp["QIB"] = f"{data['qib']}x"
+    resp["Total"] = f"{data['total']}x"
 
     LOGGER.debug("Subscription Info for url: %s", url)
-    LOGGER.debug("%s", last_row_data)
-    return last_row_data
+    LOGGER.debug("%s", resp)
+    return resp
+
 
 
 def extract_info(url: str) -> dict:
@@ -517,7 +563,7 @@ def format_msg(msg: list, has_fallback_ipos: bool) -> str:
                 continue
 
             formatted_str += f"*‣ {line['ipo_name']}*\n"
-            formatted_str += f"> GMP: *{line['listing_gmp']}*\n"
+            formatted_str += f"> GMP: *{line['listing_gmp']}%*\n"
             formatted_str += f"> Issue Size: *{line['ipo_info']['issue_size']}*\n"
             formatted_str += f"> Issue Price: *{line['ipo_info']['issue_price']}*\n"
             formatted_str += f"> Lot Size: *{line['ipo_info']['lot_size']}*\n"
