@@ -254,7 +254,7 @@ def fetch_ipo_data() -> dict:
         dict: IPO data
     """
     try:
-        response = get(url="https://webnodejs.investorgain.com/cloud/report/data-read/331/1/7/2025/2025-26/0/all?search=&v=03-49")
+        response = get(url=CONFIG["MAIN"]["IPO_GMP_BASE_URL"])
     except HTTPError as e:
         LOGGER.error("Error fetching main site!")
         LOGGER.error(e)
@@ -379,7 +379,7 @@ def fetch_subscription_info(url: str) -> dict:
 
     # Url changes for subscriptions page from the original scrape
     # url = url.replace("/gmp", "/subscription")
-    url_root = "https://webnodejs.investorgain.com/cloud/ipo/ipo-subscription-read/"
+    url_root = CONFIG["MAIN"]["IPO_SUBSCRIPTION_BASE_URL"]
     url = url_root + url.split("/")[-2] 
     LOGGER.debug("Fetching subscription info from %s", url)
 
@@ -661,7 +661,7 @@ def send_message(msg: str) -> str:
     """
     url = "https://gate.whapi.cloud/messages/text"
 
-    payload = {"typing_time": 0, "to": CONFIG["MAIN"]["WHAPI_GROUP_ID"], "body": msg}
+    payload = {"typing_time": 0, "to": CONFIG["MAIN"]["WHATSAPP_GROUP_ID"], "body": msg}
     headers = {
         "accept": "application/json",
         "content-type": "application/json",
@@ -673,6 +673,34 @@ def send_message(msg: str) -> str:
     LOGGER.debug(response.text)
     return response.text
 
+def send_message_green_api(msg: str) -> str:
+    """
+    Send a message to a given whatsapp group using Green API.
+    Requires `group_id`.
+
+    Args:
+        msg (str): Whatsapp message to be sent.
+
+    Returns:
+        str: Green API response
+    """
+    api_creds = CONFIG["GREENAPI"]
+    url = f"{api_creds['API_URL']}/waInstance{api_creds['ID_INSTANCE']}/sendMessage/{api_creds['API_TOKEN']}"
+
+
+    payload = {
+        "chatId": CONFIG["MAIN"]["WHATSAPP_GROUP_ID"],
+        "message": msg,
+        }
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+    }
+
+    response = post(url, json=payload, headers=headers)
+
+    LOGGER.debug(response.text)
+    return response.text
 
 def main():
     __bootstrap()
@@ -693,7 +721,7 @@ def main():
         LOGGER.info("No upcoming IPOs with matching criteria!")
 
     if not CLI_ARGS.dry_run and message:
-        send_message(message)
+        send_message_green_api(message)
         return
 
 
