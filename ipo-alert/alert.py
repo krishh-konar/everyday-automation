@@ -398,7 +398,7 @@ def fetch_subscription_info(url: str) -> dict:
         return {"upcoming": "Upcoming IPO, Subscription not open!"}
 
     resp = dict()
-    resp["bidding_day"] = str(len(data))
+    resp["bidding_day"] = str(len(response.json()["data"]["ipoBiddingData"]))
     resp["RII"] = f"{data['rii']}x"
     resp["NII"] = f"{data['nii']}x"
     resp["QIB"] = f"{data['qib']}x"
