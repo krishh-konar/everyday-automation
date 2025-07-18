@@ -190,65 +190,6 @@ def parse_gmp(gmp_str: str) -> float:
         raise ValueError("Percentage not found in the string")
 
 
-# def fetch_ipo_data() -> dict:
-#     """Call IPO GMP page and parse IPO related data.
-
-#     Returns:
-#         dict: IPO data
-#     """
-#     try:
-#         response = get(url=CONFIG["MAIN"]["GMP_BASE_URL"])
-#     except HTTPError as e:
-#         LOGGER.error("Error fetching main site!")
-#         LOGGER.error(e)
-#         exit(-2)
-
-#     # the urls we get are relavtive urls, will need to append the hostname
-#     base_url = urlparse(CONFIG["MAIN"]["GMP_BASE_URL"])
-#     hostname = f"{base_url.scheme}://{base_url.netloc}"
-
-#     if response.status_code == 200:
-#         soup = BeautifulSoup(response.text, "html.parser")
-#         ipo_data = []
-
-#         rows = soup.find_all("tr")  # scan all rows
-
-#         for row in rows:
-#             entry = defaultdict(str)
-
-#             # Data present in elements with data-label="IPO", "Est Listing", and "Close"
-#             ipo_tag = row.find("td", attrs={"data-label": "IPO"})
-#             if ipo_tag:
-#                 # Find the <a> tag within this td to get the URL and name
-#                 ipo_link = ipo_tag.find("a")
-#                 if ipo_link:
-#                     entry["ipo_url"] = hostname + ipo_link["href"]
-#                     for span in ipo_link.find_all("span"):
-#                         span.decompose()
-#                     entry["ipo_name"] = ipo_link.get_text(strip=True)
-
-#             est_listing_tag = row.find("td", attrs={"data-label": "Est Listing"})
-#             if est_listing_tag:
-#                 entry["listing_gmp"] = est_listing_tag.text.strip()
-
-#             close_tag = row.find("td", attrs={"data-label": "Close"})
-#             if close_tag:
-#                 entry["close_date"] = close_tag.text.strip()
-#             if " sme" in entry["ipo_name"].lower():
-#                 entry["type"] = "sme"
-#             else:
-#                 entry["type"] = "mainboard"
-
-#             ipo_data.append(entry)
-
-#     else:
-#         LOGGER.error(
-#             "Failed to retrieve the page. Status code: %s", response.status_code
-#         )
-
-#     return ipo_data
-
-
 def fetch_ipo_data() -> dict:
     """Call IPO GMP page and parse IPO related data.
 
@@ -297,76 +238,6 @@ def fetch_ipo_data() -> dict:
     return ipo_data
     
 
-
-# def fetch_subscription_info(url: str) -> dict:
-#     """
-#     Fetches the subscription information for a given IPO from the
-#     subscriptions page and returns the latest day's subscription data.
-
-#     Args:
-#         url (str): URL for IPO's subscription page
-
-#     Returns:
-#         dict: Subscription info (eg. {"RII": "34.2x"})
-#     """
-
-#     # Url changes for subscriptions page from the original scrape
-#     # url = url.replace("/gmp", "/subscription")
-#     url_root = "https://webnodejs.investorgain.com/cloud/ipo/ipo-subscription-read/"
-#     url = url_root + url.split("/")[-1] 
-
-#     try:
-#         response = get(url)
-#     except HTTPError as e:
-#         LOGGER.error("Error fetching subscription info for %s", url)
-#         LOGGER.error(e)
-#         return {}
-
-#     html_content = response.text
-#     soup = BeautifulSoup(html_content, "html.parser")
-#     table = None
-
-#     # The table has no real attribute to pinpoint it on page,
-#     # so using the "caption" tag to find the table.
-#     for caption in soup.find_all("caption"):
-#         if caption.text.strip().startswith("IPO Bidding Live Updates"):
-#             table = caption.find_parent("table")
-#             break
-
-#     if not table:
-#         LOGGER.error("Subscription table not found!")
-#         return {"upcoming": "Upcoming IPO, Subscription not open!"}
-
-#     # Get all rows within the table
-#     rows = table.find_all("tr")
-
-#     if not rows:
-#         LOGGER.error("No rows found in the table")
-#         return {"upcoming": "Upcoming IPO, Subscription not open!"}
-
-#     # Only get the last row, for the latest subscription info.
-#     last_row = rows[-1]
-
-#     # Extract data-title attributes and their corresponding text from the last row
-#     last_row_data = {}
-#     cells = last_row.find_all("td")
-
-#     # ignoring the first two columns (date and serial)
-#     for cell in cells[2:]:
-#         data_title = cell.get("data-title")
-#         if data_title:
-#             # Seperate institution and Date
-#             pattern = r"(.*)-Day(\d+)"
-#             institution = match(pattern, data_title)
-
-#             if institution:
-#                 last_row_data["bidding_day"] = institution.group(2)
-#                 last_row_data[institution.group(1)] = cell.text.strip()
-
-#     LOGGER.debug("Subscription Info for url: %s", url)
-#     LOGGER.debug("%s", last_row_data)
-#     return last_row_data
-
 def fetch_subscription_info(url: str) -> dict:
     """
     Fetches the subscription information for a given IPO from the
@@ -380,7 +251,6 @@ def fetch_subscription_info(url: str) -> dict:
     """
 
     # Url changes for subscriptions page from the original scrape
-    # url = url.replace("/gmp", "/subscription")
     url_root = CONFIG["MAIN"]["IPO_SUBSCRIPTION_BASE_URL"]
     url = url_root + url.split("/")[-2] 
     LOGGER.debug("Fetching subscription info from %s", url)
@@ -392,7 +262,6 @@ def fetch_subscription_info(url: str) -> dict:
         LOGGER.error(e)
         return {}
 
-    # print(response.json())
     data = response.json()["data"]["ipoBiddingData"][-1]
 
     if len(data) == 0:
@@ -521,7 +390,6 @@ def filter_data(
 
         date_delta = get_date_delta(ipo["close_date"])
         if date_delta >= 0 and date_delta < days_before_deadline:
-            # if parse_gmp(ipo["listing_gmp"]) >= threshold:
             try:
                 if ipo["listing_gmp"] >= threshold:
                     # All checks pass, scrape the subscriptions page to fetch
@@ -763,7 +631,6 @@ async def main():
         LOGGER.info("No upcoming IPOs with matching criteria!")
 
     if not CLI_ARGS.dry_run and message:
-        # send_message_green_api(message)
         send_message_telegram(telegram_bot, message)
         return
 
