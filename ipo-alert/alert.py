@@ -9,6 +9,8 @@ from collections import defaultdict
 from urllib.parse import urlparse
 from configparser import ConfigParser
 from pprint import pformat
+import asyncio
+import telegram
 import logging
 
 # Setup Global variables for ease of usability
@@ -195,57 +197,46 @@ def fetch_ipo_data() -> dict:
         dict: IPO data
     """
     try:
-        response = get(url=CONFIG["MAIN"]["GMP_BASE_URL"])
+        response = get(url=CONFIG["MAIN"]["IPO_GMP_BASE_URL"])
     except HTTPError as e:
         LOGGER.error("Error fetching main site!")
         LOGGER.error(e)
         exit(-2)
 
-    # the urls we get are relavtive urls, will need to append the hostname
+    ipo_data = []
     base_url = urlparse(CONFIG["MAIN"]["GMP_BASE_URL"])
     hostname = f"{base_url.scheme}://{base_url.netloc}"
 
-    if response.status_code == 200:
-        soup = BeautifulSoup(response.text, "html.parser")
-        ipo_data = []
+    raw_data = response.json()["reportTableData"]
+    for row in raw_data:
+        entry = defaultdict(str)
 
-        rows = soup.find_all("tr")  # scan all rows
+        if "SME" in row["~IPO_Category"].lower():
+            entry["type"] = "sme"
+        else:
+            entry["type"] = "mainboard"
 
-        for row in rows:
-            entry = defaultdict(str)
+        # Extract the Name from the "title" attribute within the "~IPO_Name" field
+        name_match = search(r'title="([^"]+)"', row["Name"])
+        if name_match:
+            entry["ipo_name"] = name_match.group(1).replace("IPO", "").strip()
+        else:
+            entry["ipo_name"] = row["Name"].replace("IPO", "").strip()
 
-            # Data present in elements with data-label="IPO", "Est Listing", and "Close"
-            ipo_tag = row.find("td", attrs={"data-label": "IPO"})
-            if ipo_tag:
-                # Find the <a> tag within this td to get the URL and name
-                ipo_link = ipo_tag.find("a")
-                if ipo_link:
-                    entry["ipo_url"] = hostname + ipo_link["href"]
-                    for span in ipo_link.find_all("span"):
-                        span.decompose()
-                    entry["ipo_name"] = ipo_link.get_text(strip=True)
+        # Extract GMP percentage value from the "~IPO_Name" field
+        gmp_match = search(r"\((\d+\.\d+)%\)", row["Est Listing"])
+        if gmp_match:
+            entry["listing_gmp"] = float(gmp_match.group(1))
+        else:
+            entry["listing_gmp"] = None
 
-            est_listing_tag = row.find("td", attrs={"data-label": "Est Listing"})
-            if est_listing_tag:
-                entry["listing_gmp"] = est_listing_tag.text.strip()
+        entry["close_date"] = row["Close"].strip()
+        entry["ipo_url"] = hostname + row["~urlrewrite_folder_name"]
+        ipo_data.append(entry)
 
-            close_tag = row.find("td", attrs={"data-label": "Close"})
-            if close_tag:
-                entry["close_date"] = close_tag.text.strip()
-            if " sme" in entry["ipo_name"].lower():
-                entry["type"] = "sme"
-            else:
-                entry["type"] = "mainboard"
-
-            ipo_data.append(entry)
-
-    else:
-        LOGGER.error(
-            "Failed to retrieve the page. Status code: %s", response.status_code
-        )
-
+    print(ipo_data)
     return ipo_data
-
+    
 
 def fetch_subscription_info(url: str) -> dict:
     """
@@ -260,7 +251,9 @@ def fetch_subscription_info(url: str) -> dict:
     """
 
     # Url changes for subscriptions page from the original scrape
-    url = url.replace("/gmp", "/subscription")
+    url_root = CONFIG["MAIN"]["IPO_SUBSCRIPTION_BASE_URL"]
+    url = url_root + url.split("/")[-2] 
+    LOGGER.debug("Fetching subscription info from %s", url)
 
     try:
         response = get(url)
@@ -269,50 +262,23 @@ def fetch_subscription_info(url: str) -> dict:
         LOGGER.error(e)
         return {}
 
-    html_content = response.text
-    soup = BeautifulSoup(html_content, "html.parser")
-    table = None
+    data = response.json()["data"]["ipoBiddingData"][-1]
 
-    # The table has no real attribute to pinpoint it on page,
-    # so using the "caption" tag to find the table.
-    for caption in soup.find_all("caption"):
-        if caption.text.strip().startswith("IPO Bidding Live Updates"):
-            table = caption.find_parent("table")
-            break
-
-    if not table:
+    if len(data) == 0:
         LOGGER.error("Subscription table not found!")
         return {"upcoming": "Upcoming IPO, Subscription not open!"}
 
-    # Get all rows within the table
-    rows = table.find_all("tr")
-
-    if not rows:
-        LOGGER.error("No rows found in the table")
-        return {"upcoming": "Upcoming IPO, Subscription not open!"}
-
-    # Only get the last row, for the latest subscription info.
-    last_row = rows[-1]
-
-    # Extract data-title attributes and their corresponding text from the last row
-    last_row_data = {}
-    cells = last_row.find_all("td")
-
-    # ignoring the first two columns (date and serial)
-    for cell in cells[2:]:
-        data_title = cell.get("data-title")
-        if data_title:
-            # Seperate institution and Date
-            pattern = r"(.*)-Day(\d+)"
-            institution = match(pattern, data_title)
-
-            if institution:
-                last_row_data["bidding_day"] = institution.group(2)
-                last_row_data[institution.group(1)] = cell.text.strip()
+    resp = dict()
+    resp["bidding_day"] = str(len(response.json()["data"]["ipoBiddingData"]))
+    resp["RII"] = f"{data['rii']}x"
+    resp["NII"] = f"{data['nii']}x"
+    resp["QIB"] = f"{data['qib']}x"
+    resp["Total"] = f"{data['total']}x"
 
     LOGGER.debug("Subscription Info for url: %s", url)
-    LOGGER.debug("%s", last_row_data)
-    return last_row_data
+    LOGGER.debug("%s", resp)
+    return resp
+
 
 
 def extract_info(url: str) -> dict:
@@ -343,6 +309,7 @@ def extract_info(url: str) -> dict:
         if len(columns) == 2:  # Check if the row has two columns
             key = columns[0].text.strip()
             value = columns[1].text.strip()
+            print(f"Key: {key}, Value: {value}")
             if "Issue Price" in key:
                 table_data["issue_price"] = value
             elif "1 Lot Amount" in key:
@@ -351,6 +318,8 @@ def extract_info(url: str) -> dict:
                 table_data["lot_size"] = value
             elif "IPO Issue Size" in key:
                 table_data["issue_size"] = value
+            elif "Individual Investor" in key:
+                table_data["lot_amount"] = value
 
     return table_data
 
@@ -421,13 +390,19 @@ def filter_data(
 
         date_delta = get_date_delta(ipo["close_date"])
         if date_delta >= 0 and date_delta < days_before_deadline:
-            if parse_gmp(ipo["listing_gmp"]) >= threshold:
-                # All checks pass, scrape the subscriptions page to fetch
-                # and add that information in ipo dict
-                ipo["ipo_subscription"] = fetch_subscription_info(ipo["ipo_url"])
-                ipo["ipo_info"] = extract_info(ipo["ipo_url"])
-                filtered_list.append(ipo)
+            try:
+                if ipo["listing_gmp"] >= threshold:
+                    # All checks pass, scrape the subscriptions page to fetch
+                    # and add that information in ipo dict
+                    ipo["ipo_subscription"] = fetch_subscription_info(ipo["ipo_url"])
+                    ipo["ipo_info"] = extract_info(ipo["ipo_url"])
+                    filtered_list.append(ipo)
+            except Exception as e:
+                LOGGER.error(
+                    "Error parsing GMP for %s: %s, skipping!", ipo["ipo_name"], e
+                )
 
+    print(f"Filtered IPOs: {filtered_list}")
     return filtered_list
 
 
@@ -463,7 +438,7 @@ def format_msg(msg: list, has_fallback_ipos: bool) -> str:
                 continue
 
             formatted_str += f"*‣ {line['ipo_name']}*\n"
-            formatted_str += f"> GMP: *{line['listing_gmp']}*\n"
+            formatted_str += f"> GMP: *{line['listing_gmp']}%*\n"
             formatted_str += f"> Issue Size: *{line['ipo_info']['issue_size']}*\n"
             formatted_str += f"> Issue Price: *{line['ipo_info']['issue_price']}*\n"
             formatted_str += f"> Lot Size: *{line['ipo_info']['lot_size']}*\n"
@@ -561,7 +536,7 @@ def send_message(msg: str) -> str:
     """
     url = "https://gate.whapi.cloud/messages/text"
 
-    payload = {"typing_time": 0, "to": CONFIG["MAIN"]["WHAPI_GROUP_ID"], "body": msg}
+    payload = {"typing_time": 0, "to": CONFIG["MAIN"]["WHATSAPP_GROUP_ID"], "body": msg}
     headers = {
         "accept": "application/json",
         "content-type": "application/json",
@@ -573,8 +548,70 @@ def send_message(msg: str) -> str:
     LOGGER.debug(response.text)
     return response.text
 
+def send_message_green_api(msg: str) -> str:
+    """
+    Send a message to a given whatsapp group using Green API.
+    Requires `group_id`.
 
-def main():
+    Args:
+        msg (str): Whatsapp message to be sent.
+
+    Returns:
+        str: Green API response
+    """
+    api_creds = CONFIG["GREENAPI"]
+    url = f"{api_creds['API_URL']}/waInstance{api_creds['ID_INSTANCE']}/sendMessage/{api_creds['API_TOKEN']}"
+
+
+    payload = {
+        "chatId": CONFIG["MAIN"]["WHATSAPP_GROUP_ID"],
+        "message": msg,
+        }
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+    }
+
+    response = post(url, json=payload, headers=headers)
+
+    LOGGER.debug(response.text)
+    return response.text
+
+def init_telegram_bot() -> telegram.Bot:
+    """
+    Initialize the Telegram bot using the token from the config.
+
+    Returns:
+        telegram.Bot: Initialized Telegram bot instance.
+    """
+    token = CONFIG["TELEGRAM"]["TOKEN"]
+    if not token:
+        LOGGER.error("Telegram bot token not found in config!")
+        exit(-1)
+
+    try:
+        bot = telegram.Bot(token=token)
+        return bot
+    
+    except Exception as e:
+        LOGGER.error("Failed to initialize Telegram bot: %s", e)
+        exit(-1)
+
+async def send_message_telegram(bot: telegram.Bot, msg: str) -> None:
+    """
+    Send a message to the Telegram bot.
+
+    Args:
+        bot (telegram.Bot): Initialized Telegram bot instance.
+        msg (str): Message to be sent.
+    """
+    try:
+        await bot.send_message(chat_id=CONFIG["TELEGRAM"]["CHAT_ID"], text=msg, parse_mode="Markdown")
+        LOGGER.info("Message sent to Telegram successfully.")
+    except Exception as e:
+        LOGGER.error("Failed to send message to Telegram: %s", e)
+
+async def main():
     __bootstrap()
 
     # Enable for first time-run
@@ -586,6 +623,7 @@ def main():
     ipo_data = fetch_ipo_data()
     ipo_alerts_data, has_fallback_ipos = get_filtered_list(ipo_data)
     message = format_msg(ipo_alerts_data, has_fallback_ipos)
+    telegram_bot = init_telegram_bot()
 
     if message:
         LOGGER.info(message)
@@ -593,9 +631,9 @@ def main():
         LOGGER.info("No upcoming IPOs with matching criteria!")
 
     if not CLI_ARGS.dry_run and message:
-        send_message(message)
+        send_message_telegram(telegram_bot, message)
         return
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())

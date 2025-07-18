@@ -2,5 +2,17 @@
 
 WHAPI_API_URL = https://gate.whapi.cloud/
 WHAPI_TOKEN = <Add Token Here>
-WHAPI_GROUP_ID = <Add group_id here, use create_group() to create and fetch the group id"
+WHATSAPP_GROUP_ID = <Add group_id here, use create_group() to create and fetch the group id"
 GMP_BASE_URL = https://www.investorgain.com/report/live-ipo-gmp/331/
+IPO_SUBSCRIPTION_BASE_URL = <Fetch latest from website>
+IPO_GMP_BASE_URL =  <Fetch latest from website>
+
+
+[GREENAPI]
+API_URL = <API_URL>
+ID_INSTANCE = <ID>
+API_TOKEN = <Token>
+
+[TELEGRAM]
+TOKEN = <Token>
+CHAT_ID = <ChatID>>
