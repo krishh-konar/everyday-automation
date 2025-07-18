@@ -9,7 +9,10 @@ IPO_GMP_BASE_URL =  <Fetch latest from website>
 
 
 [GREENAPI]
-
 API_URL = <API_URL>
 ID_INSTANCE = <ID>
 API_TOKEN = <Token>
+
+[TELEGRAM]
+TOKEN = <Token>
+CHAT_ID = <ChatID>>

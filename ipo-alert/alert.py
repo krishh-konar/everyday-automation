@@ -9,6 +9,8 @@ from collections import defaultdict
 from urllib.parse import urlparse
 from configparser import ConfigParser
 from pprint import pformat
+import asyncio
+import telegram
 import logging
 
 # Setup Global variables for ease of usability
@@ -520,12 +522,17 @@ def filter_data(
         date_delta = get_date_delta(ipo["close_date"])
         if date_delta >= 0 and date_delta < days_before_deadline:
             # if parse_gmp(ipo["listing_gmp"]) >= threshold:
-            if ipo["listing_gmp"] >= threshold:
-                # All checks pass, scrape the subscriptions page to fetch
-                # and add that information in ipo dict
-                ipo["ipo_subscription"] = fetch_subscription_info(ipo["ipo_url"])
-                ipo["ipo_info"] = extract_info(ipo["ipo_url"])
-                filtered_list.append(ipo)
+            try:
+                if ipo["listing_gmp"] >= threshold:
+                    # All checks pass, scrape the subscriptions page to fetch
+                    # and add that information in ipo dict
+                    ipo["ipo_subscription"] = fetch_subscription_info(ipo["ipo_url"])
+                    ipo["ipo_info"] = extract_info(ipo["ipo_url"])
+                    filtered_list.append(ipo)
+            except Exception as e:
+                LOGGER.error(
+                    "Error parsing GMP for %s: %s, skipping!", ipo["ipo_name"], e
+                )
 
     print(f"Filtered IPOs: {filtered_list}")
     return filtered_list
@@ -702,7 +709,41 @@ def send_message_green_api(msg: str) -> str:
     LOGGER.debug(response.text)
     return response.text
 
-def main():
+def init_telegram_bot() -> telegram.Bot:
+    """
+    Initialize the Telegram bot using the token from the config.
+
+    Returns:
+        telegram.Bot: Initialized Telegram bot instance.
+    """
+    token = CONFIG["TELEGRAM"]["TOKEN"]
+    if not token:
+        LOGGER.error("Telegram bot token not found in config!")
+        exit(-1)
+
+    try:
+        bot = telegram.Bot(token=token)
+        return bot
+    
+    except Exception as e:
+        LOGGER.error("Failed to initialize Telegram bot: %s", e)
+        exit(-1)
+
+async def send_message_telegram(bot: telegram.Bot, msg: str) -> None:
+    """
+    Send a message to the Telegram bot.
+
+    Args:
+        bot (telegram.Bot): Initialized Telegram bot instance.
+        msg (str): Message to be sent.
+    """
+    try:
+        await bot.send_message(chat_id=CONFIG["TELEGRAM"]["CHAT_ID"], text=msg, parse_mode="Markdown")
+        LOGGER.info("Message sent to Telegram successfully.")
+    except Exception as e:
+        LOGGER.error("Failed to send message to Telegram: %s", e)
+
+async def main():
     __bootstrap()
 
     # Enable for first time-run
@@ -714,6 +755,7 @@ def main():
     ipo_data = fetch_ipo_data()
     ipo_alerts_data, has_fallback_ipos = get_filtered_list(ipo_data)
     message = format_msg(ipo_alerts_data, has_fallback_ipos)
+    telegram_bot = init_telegram_bot()
 
     if message:
         LOGGER.info(message)
@@ -721,9 +763,10 @@ def main():
         LOGGER.info("No upcoming IPOs with matching criteria!")
 
     if not CLI_ARGS.dry_run and message:
-        send_message_green_api(message)
+        # send_message_green_api(message)
+        send_message_telegram(telegram_bot, message)
         return
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
