@@ -57,7 +57,14 @@ def __bootstrap() -> None:
                     "WHAPI_TOKEN": getenv("WHAPI_TOKEN"),
                     "WHAPI_GROUP_ID": getenv("WHAPI_GROUP_ID"),
                     "GMP_BASE_URL": getenv("GMP_BASE_URL"),
-                }
+                    "IPO_GMP_BASE_URL": getenv("IPO_GMP_BASE_URL"),
+                    "IPO_SUBSCRIPTION_BASE_URL": getenv("IPO_SUBSCRIPTION_BASE_URL"),
+                    "WHATSAPP_GROUP_ID": getenv("WHATSAPP_GROUP_ID"),
+                },
+                "TELEGRAM": {
+                    "TOKEN": getenv("TELEGRAM_TOKEN"),
+                    "CHAT_ID": getenv("TELEGRAM_CHAT_ID"),
+                },
             }
 
         else:
