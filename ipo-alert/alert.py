@@ -459,7 +459,7 @@ def format_msg(msg: list, has_fallback_ipos: bool) -> str:
                         continue
 
                     formatted_str += (
-                        f"*{institution}*: {line['ipo_subscription'][institution]},\n    > "
+                        f"{institution}: *{line['ipo_subscription'][institution]}* \n    > "
                     )
 
                 formatted_str = formatted_str[:-8]
