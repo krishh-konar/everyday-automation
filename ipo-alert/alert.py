@@ -231,7 +231,7 @@ def fetch_ipo_data() -> dict:
             entry["ipo_name"] = row["Name"].replace("IPO", "").strip()
 
         # Extract GMP percentage value from the "~IPO_Name" field
-        gmp_match = search(r"\((\d+\.\d+)%\)", row["Est Listing"])
+        gmp_match = search(r"\((\d+\.?\d+)%\)", row["Est Listing"])
         if gmp_match:
             entry["listing_gmp"] = float(gmp_match.group(1))
         else:
@@ -241,7 +241,6 @@ def fetch_ipo_data() -> dict:
         entry["ipo_url"] = hostname + row["~urlrewrite_folder_name"]
         ipo_data.append(entry)
 
-    print(ipo_data)
     return ipo_data
     
 
@@ -316,7 +315,7 @@ def extract_info(url: str) -> dict:
         if len(columns) == 2:  # Check if the row has two columns
             key = columns[0].text.strip()
             value = columns[1].text.strip()
-            print(f"Key: {key}, Value: {value}")
+
             if "Issue Price" in key:
                 table_data["issue_price"] = value
             elif "1 Lot Amount" in key:
