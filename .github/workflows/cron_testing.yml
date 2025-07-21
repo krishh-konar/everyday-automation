@@ -64,4 +64,4 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          python ipo-alert/alert.py -d ${{ github.event.inputs.checkUntil }} -t ${{ github.event.inputs.threshold }} --fallback-threshold ${{ github.event.inputs.logLevel }} --github-secrets --log-level ${{ github.event.inputs.logLevel }}
+          python ipo-alert/alert.py -d ${{ github.event.inputs.checkUntil }} -t ${{ github.event.inputs.threshold }} --fallback-threshold ${{ github.event.inputs.fallbackThreshold }} --github-secrets --log-level ${{ github.event.inputs.logLevel }}
