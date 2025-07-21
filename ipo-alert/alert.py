@@ -444,29 +444,29 @@ def format_msg(msg: list, has_fallback_ipos: bool) -> str:
                 continue
 
             formatted_str += f"*‣ {line['ipo_name']}*\n"
-            formatted_str += f"> GMP: *{line['listing_gmp']}%*\n"
-            formatted_str += f"> Issue Size: *{line['ipo_info']['issue_size']}*\n"
-            formatted_str += f"> Issue Price: *{line['ipo_info']['issue_price']}*\n"
-            formatted_str += f"> Lot Size: *{line['ipo_info']['lot_size']}*\n"
-            formatted_str += f"> Lot Amount: *{line['ipo_info']['lot_amount']}*\n"
-            formatted_str += f"> Closing On: *{line['close_date']}*\n"
+            formatted_str += f"    > GMP: *{line['listing_gmp']}%*\n"
+            formatted_str += f"    > Issue Size: *{line['ipo_info']['issue_size']}*\n"
+            formatted_str += f"    > Issue Price: *{line['ipo_info']['issue_price']}*\n"
+            formatted_str += f"    > Lot Size: *{line['ipo_info']['lot_size']}*\n"
+            formatted_str += f"    > Lot Amount: *{line['ipo_info']['lot_amount']}*\n"
+            formatted_str += f"    > Closing On: *{line['close_date']}*\n"
 
             if "upcoming" not in line["ipo_subscription"].keys():
-                formatted_str += f"Subscription Info *(Day {line['ipo_subscription']['bidding_day']})*:\n> "
+                formatted_str += f"  Subscription Info *(Day {line['ipo_subscription']['bidding_day']})*:\n    > "
 
                 for institution in line["ipo_subscription"].keys():
                     if institution == "bidding_day":
                         continue
 
                     formatted_str += (
-                        f"*{institution}*: {line['ipo_subscription'][institution]}, "
+                        f"*{institution}*: {line['ipo_subscription'][institution]},\n    > "
                     )
 
-                formatted_str = formatted_str[:-2]
+                formatted_str = formatted_str[:-8]
 
             else:
                 formatted_str += (
-                    f"Subscription Info:\n> {line['ipo_subscription']['upcoming']}"
+                    f"  Subscription Info:\n    > {line['ipo_subscription']['upcoming']}"
                 )
 
             formatted_str += "\n\n"
@@ -637,7 +637,7 @@ async def main():
         LOGGER.info("No upcoming IPOs with matching criteria!")
 
     if not CLI_ARGS.dry_run and message:
-        send_message_telegram(telegram_bot, message)
+        await send_message_telegram(telegram_bot, message)
         return
 
 
