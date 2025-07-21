@@ -57,7 +57,14 @@ def __bootstrap() -> None:
                     "WHAPI_TOKEN": getenv("WHAPI_TOKEN"),
                     "WHAPI_GROUP_ID": getenv("WHAPI_GROUP_ID"),
                     "GMP_BASE_URL": getenv("GMP_BASE_URL"),
-                }
+                    "IPO_GMP_BASE_URL": getenv("IPO_GMP_BASE_URL"),
+                    "IPO_SUBSCRIPTION_BASE_URL": getenv("IPO_SUBSCRIPTION_BASE_URL"),
+                    "WHATSAPP_GROUP_ID": getenv("WHATSAPP_GROUP_ID"),
+                },
+                "TELEGRAM": {
+                    "TOKEN": getenv("TELEGRAM_TOKEN"),
+                    "CHAT_ID": getenv("TELEGRAM_CHAT_ID"),
+                },
             }
 
         else:
@@ -224,7 +231,7 @@ def fetch_ipo_data() -> dict:
             entry["ipo_name"] = row["Name"].replace("IPO", "").strip()
 
         # Extract GMP percentage value from the "~IPO_Name" field
-        gmp_match = search(r"\((\d+\.\d+)%\)", row["Est Listing"])
+        gmp_match = search(r"\((\d+\.?\d+)%\)", row["Est Listing"])
         if gmp_match:
             entry["listing_gmp"] = float(gmp_match.group(1))
         else:
@@ -234,7 +241,6 @@ def fetch_ipo_data() -> dict:
         entry["ipo_url"] = hostname + row["~urlrewrite_folder_name"]
         ipo_data.append(entry)
 
-    print(ipo_data)
     return ipo_data
     
 
@@ -309,7 +315,7 @@ def extract_info(url: str) -> dict:
         if len(columns) == 2:  # Check if the row has two columns
             key = columns[0].text.strip()
             value = columns[1].text.strip()
-            print(f"Key: {key}, Value: {value}")
+
             if "Issue Price" in key:
                 table_data["issue_price"] = value
             elif "1 Lot Amount" in key:
@@ -438,29 +444,29 @@ def format_msg(msg: list, has_fallback_ipos: bool) -> str:
                 continue
 
             formatted_str += f"*‣ {line['ipo_name']}*\n"
-            formatted_str += f"> GMP: *{line['listing_gmp']}%*\n"
-            formatted_str += f"> Issue Size: *{line['ipo_info']['issue_size']}*\n"
-            formatted_str += f"> Issue Price: *{line['ipo_info']['issue_price']}*\n"
-            formatted_str += f"> Lot Size: *{line['ipo_info']['lot_size']}*\n"
-            formatted_str += f"> Lot Amount: *{line['ipo_info']['lot_amount']}*\n"
-            formatted_str += f"> Closing On: *{line['close_date']}*\n"
+            formatted_str += f"    > GMP: *{line['listing_gmp']}%*\n"
+            formatted_str += f"    > Issue Size: *{line['ipo_info']['issue_size']}*\n"
+            formatted_str += f"    > Issue Price: *{line['ipo_info']['issue_price']}*\n"
+            formatted_str += f"    > Lot Size: *{line['ipo_info']['lot_size']}*\n"
+            formatted_str += f"    > Lot Amount: *{line['ipo_info']['lot_amount']}*\n"
+            formatted_str += f"    > Closing On: *{line['close_date']}*\n"
 
             if "upcoming" not in line["ipo_subscription"].keys():
-                formatted_str += f"Subscription Info *(Day {line['ipo_subscription']['bidding_day']})*:\n> "
+                formatted_str += f"  Subscription Info *(Day {line['ipo_subscription']['bidding_day']})*:\n    > "
 
                 for institution in line["ipo_subscription"].keys():
                     if institution == "bidding_day":
                         continue
 
                     formatted_str += (
-                        f"*{institution}*: {line['ipo_subscription'][institution]}, "
+                        f"{institution}: *{line['ipo_subscription'][institution]}* \n    > "
                     )
 
-                formatted_str = formatted_str[:-2]
+                formatted_str = formatted_str[:-8]
 
             else:
                 formatted_str += (
-                    f"Subscription Info:\n> {line['ipo_subscription']['upcoming']}"
+                    f"  Subscription Info:\n    > {line['ipo_subscription']['upcoming']}"
                 )
 
             formatted_str += "\n\n"
@@ -631,7 +637,7 @@ async def main():
         LOGGER.info("No upcoming IPOs with matching criteria!")
 
     if not CLI_ARGS.dry_run and message:
-        send_message_telegram(telegram_bot, message)
+        await send_message_telegram(telegram_bot, message)
         return
 
 
