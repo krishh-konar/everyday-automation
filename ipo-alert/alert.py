@@ -218,7 +218,7 @@ def fetch_ipo_data() -> dict:
     for row in raw_data:
         entry = defaultdict(str)
 
-        if "SME" in row["~IPO_Category"].lower():
+        if row["~IPO_Category"].strip().lower() == "sme":
             entry["type"] = "sme"
         else:
             entry["type"] = "mainboard"
@@ -242,7 +242,7 @@ def fetch_ipo_data() -> dict:
         ipo_data.append(entry)
 
     return ipo_data
-    
+
 
 def fetch_subscription_info(url: str) -> dict:
     """
@@ -258,7 +258,7 @@ def fetch_subscription_info(url: str) -> dict:
 
     # Url changes for subscriptions page from the original scrape
     url_root = CONFIG["MAIN"]["IPO_SUBSCRIPTION_BASE_URL"]
-    url = url_root + url.split("/")[-2] 
+    url = url_root + url.split("/")[-2]
     LOGGER.debug("Fetching subscription info from %s", url)
 
     try:
@@ -284,7 +284,6 @@ def fetch_subscription_info(url: str) -> dict:
     LOGGER.debug("Subscription Info for url: %s", url)
     LOGGER.debug("%s", resp)
     return resp
-
 
 
 def extract_info(url: str) -> dict:
@@ -318,13 +317,13 @@ def extract_info(url: str) -> dict:
 
             if "Issue Price" in key:
                 table_data["issue_price"] = value
-            elif "1 Lot Amount" in key:
-                table_data["lot_amount"] = value
             elif "Market Lot" in key:
                 table_data["lot_size"] = value
             elif "IPO Issue Size" in key:
                 table_data["issue_size"] = value
-            elif "Individual Investor" in key:
+            elif "Individual Investor".lower() in key.lower():  # SME lot amount
+                table_data["lot_amount"] = value
+            elif "Retail Min".lower() in key.lower():  # Mainboard lot amount
                 table_data["lot_amount"] = value
 
     return table_data
@@ -363,7 +362,7 @@ def get_filtered_list(ipo_data: list) -> tuple[list[dict], bool]:
     if LOGGER.level == "DEBUG":
         LOGGER.debug("Filtered List:")
         for item in filtered_list:
-            LOGGER.debug(pformat(item))
+            LOGGER.debug(pformat(item, indent=4))
 
     return (filtered_list, has_fallback_ipos)
 
@@ -408,7 +407,7 @@ def filter_data(
                     "Error parsing GMP for %s: %s, skipping!", ipo["ipo_name"], e
                 )
 
-    print(f"Filtered IPOs: {filtered_list}")
+    print(f"Filtered IPOs: {pformat(filtered_list, indent=4)}")
     return filtered_list
 
 
@@ -458,16 +457,12 @@ def format_msg(msg: list, has_fallback_ipos: bool) -> str:
                     if institution == "bidding_day":
                         continue
 
-                    formatted_str += (
-                        f"{institution}: *{line['ipo_subscription'][institution]}* \n    > "
-                    )
+                    formatted_str += f"{institution}: *{line['ipo_subscription'][institution]}* \n    > "
 
                 formatted_str = formatted_str[:-8]
 
             else:
-                formatted_str += (
-                    f"  Subscription Info:\n    > {line['ipo_subscription']['upcoming']}"
-                )
+                formatted_str += f"  Subscription Info:\n    > {line['ipo_subscription']['upcoming']}"
 
             formatted_str += "\n\n"
 
@@ -554,6 +549,7 @@ def send_message(msg: str) -> str:
     LOGGER.debug(response.text)
     return response.text
 
+
 def send_message_green_api(msg: str) -> str:
     """
     Send a message to a given whatsapp group using Green API.
@@ -568,11 +564,10 @@ def send_message_green_api(msg: str) -> str:
     api_creds = CONFIG["GREENAPI"]
     url = f"{api_creds['API_URL']}/waInstance{api_creds['ID_INSTANCE']}/sendMessage/{api_creds['API_TOKEN']}"
 
-
     payload = {
         "chatId": CONFIG["MAIN"]["WHATSAPP_GROUP_ID"],
         "message": msg,
-        }
+    }
     headers = {
         "accept": "application/json",
         "content-type": "application/json",
@@ -582,6 +577,7 @@ def send_message_green_api(msg: str) -> str:
 
     LOGGER.debug(response.text)
     return response.text
+
 
 def init_telegram_bot() -> telegram.Bot:
     """
@@ -598,10 +594,11 @@ def init_telegram_bot() -> telegram.Bot:
     try:
         bot = telegram.Bot(token=token)
         return bot
-    
+
     except Exception as e:
         LOGGER.error("Failed to initialize Telegram bot: %s", e)
         exit(-1)
+
 
 async def send_message_telegram(bot: telegram.Bot, msg: str) -> None:
     """
@@ -612,10 +609,13 @@ async def send_message_telegram(bot: telegram.Bot, msg: str) -> None:
         msg (str): Message to be sent.
     """
     try:
-        await bot.send_message(chat_id=CONFIG["TELEGRAM"]["CHAT_ID"], text=msg, parse_mode="Markdown")
+        await bot.send_message(
+            chat_id=CONFIG["TELEGRAM"]["CHAT_ID"], text=msg, parse_mode="Markdown"
+        )
         LOGGER.info("Message sent to Telegram successfully.")
     except Exception as e:
         LOGGER.error("Failed to send message to Telegram: %s", e)
+
 
 async def main():
     __bootstrap()
